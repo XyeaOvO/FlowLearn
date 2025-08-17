@@ -3,12 +3,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { useTranslation } from 'react-i18next'
 import type { Word, Settings } from '@shared/types'
-import { dbList, dbUpdate, dbDelete, getSettings as ipcGetSettings, getBasket, triggerBasket, importFromClipboard, dbBulkDelete, dbBulkRestore, dbBulkUpdate, dbDeletedList } from '@lib/ipc'
+import { dbList, dbUpdate, dbDelete, getSettings as ipcGetSettings, getBasket, triggerBasket, importFromClipboard, dbBulkDelete, dbBulkRestore, dbBulkUpdate, dbDeletedList, startAIProcessing } from '@lib/ipc'
 import ListPane from '@features/vocab/ListPane'
 import DetailPane from '@features/vocab/DetailPane'
 import Review from '@features/review/Review'
 import SettingsView from '@features/settings/SettingsView'
 import AddWordModal from '@features/vocab/AddWordModal'
+import AIProcessingStatus from '@features/vocab/AIProcessingStatus'
+import WordConfirmationModal from '@features/vocab/WordConfirmationModal'
+import AIProcessingWindow from '@features/vocab/AIProcessingWindow'
 
 // Types moved to shared/types
 
@@ -40,6 +43,9 @@ function App() {
   const listWidthRef = useRef<number>(listWidth)
   useEffect(() => { listWidthRef.current = listWidth }, [listWidth])
   const [showAddWordModal, setShowAddWordModal] = useState(false)
+  const [showWordConfirmationModal, setShowWordConfirmationModal] = useState(false)
+  const [showAIProcessingWindow, setShowAIProcessingWindow] = useState(false)
+  const [pendingWords, setPendingWords] = useState<string[]>([])
   const speak = (text: string) => {
     try {
       if (settings?.ttsProvider === 'volcengine') {
@@ -105,9 +111,22 @@ function App() {
     }
     window.api.on('db-updated', handler)
     window.api.on('basket-updated', handler)
+    
+    // 监听AI处理相关事件
+    window.api.on('show-ai-processing-window', () => {
+      setShowAIProcessingWindow(true)
+    })
+    
+    window.api.on('show-word-confirmation-modal', (_event: any, words: string[]) => {
+      setPendingWords(words)
+      setShowWordConfirmationModal(true)
+    })
+    
     return () => {
       window.api.off('db-updated', handler as any)
       window.api.off('basket-updated', handler as any)
+      window.api.off('show-ai-processing-window', handler as any)
+      window.api.off('show-word-confirmation-modal', handler as any)
     }
   }, [])
 
@@ -385,6 +404,7 @@ function App() {
               setDraft={setDraft}
               setEditing={setEditing}
               speak={speak}
+              settings={settings}
               onDelete={async () => {
                 if (!selected) return
                 await dbDelete(selected.id)
@@ -415,6 +435,24 @@ function App() {
         onClose={() => setShowAddWordModal(false)}
         onSuccess={refreshBasket}
       />
+      
+      <WordConfirmationModal
+        isOpen={showWordConfirmationModal}
+        words={pendingWords}
+        onConfirm={async (confirmedWords) => {
+          setShowWordConfirmationModal(false)
+          // 开始AI处理
+          await startAIProcessing(confirmedWords)
+        }}
+        onCancel={() => setShowWordConfirmationModal(false)}
+      />
+      
+      <AIProcessingWindow
+        isOpen={showAIProcessingWindow}
+        onClose={() => setShowAIProcessingWindow(false)}
+      />
+      
+      <AIProcessingStatus />
     </div>
   )
 }

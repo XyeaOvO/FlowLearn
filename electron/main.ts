@@ -65,6 +65,20 @@ const settingsFile = path.join(app.getPath('userData'), 'settings.json')
 const dbFile = path.join(app.getPath('userData'), 'vocab.json')
 const backupDir = path.join(app.getPath('userData'), 'backups')
 
+type AIModelConfig = {
+  id: string
+  name: string
+  type: 'openai' | 'anthropic' | 'deepseek' | 'google' | 'custom'
+  apiUrl: string
+  apiKey: string
+  modelName: string
+  enabled: boolean
+  isDefault: boolean
+  createdAt: number
+  lastTested?: number
+  testResult?: boolean
+}
+
 type Settings = {
   triggerThreshold: number
   promptTemplate: string
@@ -100,6 +114,11 @@ type Settings = {
   // Daily goal & reminders
   dailyGoal?: number
   reviewReminderTimes?: string[]
+  // AI Integration
+  aiEnabled?: boolean
+  aiAutoProcess?: boolean
+  aiModels?: AIModelConfig[]
+  defaultModelId?: string
 }
 
 function readJsonFile<T>(filePath: string, fallback: T): T {
@@ -387,18 +406,35 @@ function createTray() {
       },
       {
         label: `立即处理篮中 ${basket.length} 个生词`,
-        enabled: basket.length > 0 && !isWaitingForAIResult,
-        click: () => triggerPrompt(),
+        enabled: basket.length > 0 && !isWaitingForAIResult && !aiProcessingStatus.isProcessing,
+        click: () => {
+          const s = getSettings()
+          if (s.aiEnabled) {
+            triggerPromptWithAI()
+          } else {
+            triggerPrompt()
+          }
+        },
       },
       {
         label: '清空生词篮子',
-        enabled: basket.length > 0 && !isWaitingForAIResult,
+        enabled: basket.length > 0 && !isWaitingForAIResult && !aiProcessingStatus.isProcessing,
         click: () => {
           basket = []
           updateContextMenu()
           win?.webContents.send('basket-updated', basket)
         },
       },
+      ...(aiProcessingStatus.isProcessing ? [{
+        label: `AI处理中... (${aiProcessingStatus.currentWords.length}个词汇)`,
+        enabled: false,
+      }, {
+        label: '取消AI处理',
+        click: () => {
+          cancelAIProcessing()
+          updateContextMenu()
+        },
+      }] : []),
       { type: 'separator' },
       {
         label: '设置',
@@ -557,12 +593,18 @@ function handleClipboardText(text: string) {
   updateTrayMenu()
   const s2 = getSettings()
   if (basket.length >= s2.triggerThreshold) {
-    const n = new Notification({
-      title: '已收集生词',
-      body: `您已收集 ${basket.length} 个生词，点击通知复制学习 Prompt。`,
-    })
-    n.on('click', () => triggerPrompt())
-    n.show()
+    if (s2.aiEnabled) {
+      // Auto AI processing
+      triggerPromptWithAI()
+    } else {
+      // Manual mode
+      const n = new Notification({
+        title: '已收集生词',
+        body: `您已收集 ${basket.length} 个生词，点击通知复制学习 Prompt。`,
+      })
+      n.on('click', () => triggerPrompt())
+      n.show()
+    }
   }
 }
 
@@ -1236,7 +1278,531 @@ function resetAllWords() {
   }
 }
 
+// AI Model Management Functions
+async function testAIModel(modelConfig: AIModelConfig): Promise<{ success: boolean; message: string }> {
+  try {
+    const testPrompt = 'Hello, please respond with "OK" if you can see this message.'
+    await callAIModel(modelConfig, testPrompt)
+    return { success: true, message: '连接成功' }
+  } catch (error: any) {
+    // 针对504错误提供更友好的错误信息
+    if (error.message && error.message.includes('504')) {
+      return { 
+        success: false, 
+        message: '连接超时: AI服务响应时间过长。这可能是由于网络问题或AI服务负载较高导致的。建议稍后重试或检查网络连接。' 
+      }
+    }
+    return { success: false, message: error.message || '连接失败' }
+  }
+}
+
+async function callAIModel(modelConfig: AIModelConfig, prompt: string): Promise<string> {
+  const { type, apiUrl, apiKey, modelName } = modelConfig
+  
+  updateAIStatus('connecting', '正在连接AI服务...')
+  
+  let requestBody: any
+  let headers: Record<string, string>
+  
+  switch (type) {
+    case 'openai':
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      }
+      requestBody = {
+        model: modelName,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 2000,
+        stream: true // 启用流式输出
+      }
+      break
+      
+    case 'anthropic':
+      headers = {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      }
+      requestBody = {
+        model: modelName,
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+        stream: true // 启用流式输出
+      }
+      break
+      
+    case 'deepseek':
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      }
+      requestBody = {
+        model: modelName,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 2000,
+        stream: true // 启用流式输出
+      }
+      break
+      
+    case 'google':
+      headers = {
+        'Content-Type': 'application/json'
+      }
+      requestBody = {
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2000
+        }
+      }
+      // Google Gemini 不支持流式输出，使用普通请求
+      break
+      
+    default:
+      throw new Error('不支持的AI服务类型')
+  }
+  
+  const endpoint = type === 'google' 
+    ? `${apiUrl}/v1beta/models/${modelName}:generateContent?key=${apiKey}`
+    : `${apiUrl}/chat/completions`
+  
+  updateAIStatus('sending', `正在发送请求到AI服务... (${endpoint})`)
+  
+  // 设置更长的超时时间，特别是对于复杂的词汇处理
+  const timeout = 120000 // 2分钟超时
+  const controller = new AbortController()
+  currentAbortController = controller // 保存引用以便取消
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+  
+  try {
+    // 添加进度检测
+    const progressCheck = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - aiProcessingStatus.startTime) / 1000)
+      if (elapsed > 30 && aiProcessingStatus.currentStep === 'sending') {
+        updateAIStatus('waiting', `等待AI响应中... (已等待${elapsed}秒)`)
+      }
+    }, 5000)
+    
+    const response = await globalThis.fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
+    })
+    
+    clearInterval(progressCheck)
+    
+    clearTimeout(timeoutId)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      updateAIStatus('error', `API请求失败: ${response.status}`)
+      
+      // 针对504错误提供更详细的错误信息
+      if (response.status === 504) {
+        throw new Error(`网关超时 (504): AI服务响应时间过长，请稍后重试。如果问题持续存在，请检查网络连接或尝试使用其他AI模型。`)
+      }
+      
+      throw new Error(`API请求失败: ${response.status} ${errorText}`)
+    }
+    
+    updateAIStatus('processing', '正在接收AI流式响应...')
+    
+    // 处理流式响应
+    if (type === 'google') {
+      // Google Gemini 使用普通响应
+      const data = await response.json()
+      let content: string
+      content = data.candidates?.[0]?.content?.parts?.[0]?.text
+      if (!content) {
+        throw new Error('AI响应为空')
+      }
+      return content
+    } else {
+      // OpenAI, Anthropic, DeepSeek 使用流式响应
+      return await handleStreamResponse(response, type)
+    }
+  } catch (error: any) {
+    clearTimeout(timeoutId)
+    currentAbortController = null // 清理引用
+    
+    if (error.name === 'AbortError') {
+      // 检查是否是用户主动取消
+      if (!aiProcessingStatus.isProcessing) {
+        throw new Error('用户取消了处理')
+      }
+      throw new Error('请求超时: AI服务响应时间过长，请稍后重试或检查网络连接')
+    }
+    
+    throw error
+  }
+}
+
+async function processWordsWithAI(words: string[], modelId: string): Promise<{ success: boolean; result?: any; error?: string; fullResponse?: string }> {
+  const maxRetries = 2 // 最大重试次数
+  let lastError: string = ''
+  
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    try {
+      const settings = getSettings()
+      const model = settings.aiModels?.find(m => m.id === modelId && m.enabled)
+      
+      if (!model) {
+        return { success: false, error: '未找到启用的AI模型' }
+      }
+      
+      const prompt = generatePrompt(settings.promptTemplate, words)
+      
+      // 如果是重试，更新状态
+      if (attempt > 1) {
+        updateAIStatus('retrying', `第 ${attempt} 次尝试处理中...`)
+      }
+      
+      const response = await callAIModel(model, prompt)
+      
+      // Try to extract JSON from response
+      const json = extractFlowLearnJson(response) ?? extractJson(response)
+      if (!json) {
+        return { success: false, error: 'AI响应中未找到有效的JSON数据' }
+      }
+      
+      const parsed = JSON.parse(json)
+      if (!Array.isArray(parsed) || !parsed.every(isValidWordObject)) {
+        return { success: false, error: 'JSON格式不符合要求' }
+      }
+      
+      return { success: true, result: parsed, fullResponse: response }
+    } catch (error: any) {
+      lastError = error.message || 'AI处理失败'
+      
+      // 如果是504错误或网络相关错误，尝试重试
+      const isRetryableError = error.message && (
+        error.message.includes('504') || 
+        error.message.includes('超时') || 
+        error.message.includes('网络') ||
+        error.message.includes('timeout')
+      )
+      
+      if (isRetryableError && attempt <= maxRetries) {
+        // 等待一段时间后重试
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt))
+        continue
+      }
+      
+      // 如果不是可重试的错误或已达到最大重试次数，返回错误
+      return { success: false, error: lastError }
+    }
+  }
+  
+  return { success: false, error: lastError }
+}
+
+// AI Processing Status
+let aiProcessingStatus = {
+  isProcessing: false,
+  currentWords: [] as string[],
+  currentModelId: '',
+  startTime: 0,
+  streamOutput: [] as string[],
+  currentStep: '',
+  streamContent: '' // 用于存储流式内容
+}
+
+// 用于取消正在进行的AI请求
+let currentAbortController: AbortController | null = null
+
+// 处理流式响应
+async function handleStreamResponse(response: Response, type: string): Promise<string> {
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('无法读取响应流')
+  }
+  
+  const decoder = new TextDecoder()
+  let fullContent = ''
+  let buffer = ''
+  let lastUpdateTime = 0
+  
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      
+      if (done) break
+      
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // 保留不完整的行
+      
+      for (const line of lines) {
+        if (line.trim() === '') continue
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (data === '[DONE]') {
+            updateAIStatus('completed', 'AI响应完成')
+            return fullContent
+          }
+          
+          try {
+            const parsed = JSON.parse(data)
+            let content = ''
+            
+            switch (type) {
+              case 'openai':
+              case 'deepseek':
+                content = parsed.choices?.[0]?.delta?.content || ''
+                break
+              case 'anthropic':
+                content = parsed.delta?.text || ''
+                break
+              default:
+                content = ''
+            }
+            
+                          if (content) {
+                fullContent += content
+                
+                // 限制更新频率，避免界面过于频繁刷新
+                const now = Date.now()
+                if (now - lastUpdateTime > 50) { // 每50ms更新一次
+                  lastUpdateTime = now
+                  // 确保发送的是字符串
+                  const contentToSend = String(fullContent)
+                  aiProcessingStatus.streamContent = contentToSend
+                  win?.webContents.send('ai-stream-content', contentToSend)
+                }
+              }
+          } catch (e) {
+            // 忽略解析错误，继续处理
+          }
+        }
+      }
+    }
+    
+    if (fullContent.trim() === '') {
+      throw new Error('AI响应为空')
+    }
+    
+    return fullContent
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+function getAIProcessingStatus() {
+  return aiProcessingStatus
+}
+
+function cancelAIProcessing() {
+  // 取消正在进行的请求
+  if (currentAbortController) {
+    currentAbortController.abort()
+    currentAbortController = null
+  }
+  
+  aiProcessingStatus = {
+    isProcessing: false,
+    currentWords: [],
+    currentModelId: '',
+    startTime: 0,
+    streamOutput: [],
+    currentStep: '',
+    streamContent: ''
+  }
+  
+  // 发送清空流式内容的信号
+  if (win) {
+    win.webContents.send('ai-stream-content', '')
+  }
+  
+  updateAIStatus('cancelled', '用户取消了处理')
+  return { success: true }
+}
+
+function updateAIStatus(step: string, message?: string) {
+  aiProcessingStatus.currentStep = step
+  if (message) {
+    aiProcessingStatus.streamOutput.push(`${new Date().toLocaleTimeString()}: ${message}`)
+  }
+  win?.webContents.send('ai-status-updated', aiProcessingStatus)
+}
+
+// Enhanced trigger function with AI integration
+async function triggerPromptWithAI() {
+  const settings = getSettings()
+  
+  if (!settings.aiEnabled) {
+    // Fall back to manual mode
+    triggerPrompt()
+    return
+  }
+  
+  const defaultModel = settings.aiModels?.find(m => m.id === settings.defaultModelId && m.enabled)
+  if (!defaultModel) {
+    new Notification({
+      title: 'AI处理失败',
+      body: '未找到可用的AI模型，请检查设置'
+    }).show()
+    return
+  }
+  
+  const words = basket.map(b => b.term)
+  
+  // 显示单词确认弹窗
+  if (win) {
+    win.webContents.send('show-word-confirmation-modal', words)
+  }
+}
+
+// 新增：开始AI处理的函数
+async function startAIProcessing(confirmedWords: string[]) {
+  const settings = getSettings()
+  
+  if (!settings.aiEnabled) {
+    new Notification({
+      title: 'AI处理失败',
+      body: 'AI功能未启用，请检查设置'
+    }).show()
+    return
+  }
+  
+  const defaultModel = settings.aiModels?.find(m => m.id === settings.defaultModelId && m.enabled)
+  if (!defaultModel) {
+    new Notification({
+      title: 'AI处理失败',
+      body: '未找到可用的AI模型，请检查设置'
+    }).show()
+    return
+  }
+  
+  // 更新AI处理状态
+  aiProcessingStatus = {
+    isProcessing: true,
+    currentWords: confirmedWords,
+    currentModelId: defaultModel.id,
+    startTime: Date.now(),
+    streamOutput: [],
+    currentStep: '',
+    streamContent: ''
+  }
+  
+  // 显示AI处理窗口
+  if (win) {
+    win.webContents.send('show-ai-processing-window')
+    // 发送清空流式内容的信号
+    win.webContents.send('ai-stream-content', '')
+  }
+  
+  new Notification({
+    title: '开始AI处理',
+    body: `正在使用 ${defaultModel.name} 处理 ${confirmedWords.length} 个词汇...`
+  }).show()
+  
+  try {
+    const result = await processWordsWithAI(confirmedWords, defaultModel.id)
+    
+    if (result.success && result.result) {
+      // Save the results with full AI response text
+      const fullResponse = result.fullResponse || aiProcessingStatus.streamContent || ''
+      const cleaned = stripFlowLearnJson(fullResponse) || fullResponse
+      saveWordsWithAnalysis(result.result, cleaned)
+      
+      // Clear basket and reset status
+      basket = []
+      aiProcessingStatus = {
+        isProcessing: false,
+        currentWords: [],
+        currentModelId: '',
+        startTime: 0,
+        streamOutput: [],
+        currentStep: '',
+        streamContent: ''
+      }
+      
+      // 发送清空流式内容的信号
+      if (win) {
+        win.webContents.send('ai-stream-content', '')
+      }
+      
+      win?.webContents.send('basket-updated', basket)
+      updateTrayMenu()
+      
+      new Notification({
+        title: 'AI处理完成',
+        body: `${result.result.length} 个词汇已成功保存！`
+      }).show()
+      
+      win?.webContents.send('db-updated')
+    } else {
+      throw new Error(result.error || 'AI处理失败')
+    }
+  } catch (error: any) {
+    aiProcessingStatus = {
+      isProcessing: false,
+      currentWords: [],
+      currentModelId: '',
+      startTime: 0,
+      streamOutput: [],
+      currentStep: '',
+      streamContent: ''
+    }
+    
+    // 发送清空流式内容的信号
+    if (win) {
+      win.webContents.send('ai-stream-content', '')
+    }
+    
+    new Notification({
+      title: 'AI处理失败',
+      body: error.message || '处理过程中发生错误'
+    }).show()
+  }
+}
+
 ipcMain.handle('db:resetAll', () => resetAllWords())
+
+// IPC handlers for AI functionality
+ipcMain.handle('test-ai-model', async (_e, modelConfig: AIModelConfig) => {
+  return await testAIModel(modelConfig)
+})
+
+ipcMain.handle('process-words-with-ai', async (_e, words: string[], modelId: string) => {
+  return await processWordsWithAI(words, modelId)
+})
+
+ipcMain.handle('get-ai-processing-status', () => {
+  return getAIProcessingStatus()
+})
+
+ipcMain.handle('cancel-ai-processing', () => {
+  return cancelAIProcessing()
+})
+
+// 创建AI处理状态窗口
+ipcMain.handle('create-ai-processing-window', () => {
+  if (win) {
+    win.webContents.send('show-ai-processing-window')
+  }
+  return { success: true }
+})
+
+// 显示单词确认弹窗
+ipcMain.handle('show-word-confirmation', (_e, words: string[]) => {
+  if (win) {
+    win.webContents.send('show-word-confirmation-modal', words)
+  }
+  return { success: true }
+})
+
+// 开始AI处理
+ipcMain.handle('start-ai-processing', async (_e, confirmedWords: string[]) => {
+  await startAIProcessing(confirmedWords)
+  return { success: true }
+})
 
 // Handle before-quit event to set quitting flag
 app.on('before-quit', () => {

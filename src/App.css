@@ -3172,3 +3172,30 @@ label[style*="display: flex"]:hover {
     transform: scale(1) translateY(0);
   }
 }
+
+/* AI Model Configuration */
+.ai-model-config {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: var(--bg);
+  transition: all 200ms ease;
+}
+
+.ai-model-config:hover {
+  border-color: var(--border-subtle);
+}
+
+.ai-model-config input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.ai-model-config .form-group {
+  margin-bottom: 12px;
+}
+
+.ai-model-config .form-group:last-child {
+  margin-bottom: 0;
+}

@@ -1,6 +1,7 @@
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import type { Word } from '../../../shared/types'
+import { useEffect } from 'react'
+import type { Word, Settings } from '../../../shared/types'
 import { toDateInputValue, formatDate } from '../../lib/date'
 import { useTranslation } from 'react-i18next'
 
@@ -13,6 +14,7 @@ export default function DetailPane({
   speak,
   onDelete,
   onSave,
+  settings,
 }: {
   word: Word | null
   editing: boolean
@@ -22,8 +24,17 @@ export default function DetailPane({
   speak: (t: string) => void
   onDelete: () => void
   onSave: () => void
+  settings: Settings | null
 }) {
   const { t } = useTranslation()
+  
+  // 当选中新词条时自动播放发音（如果启用了自动播放设置）
+  useEffect(() => {
+    if (word && word.term && settings?.ttsEnabled && settings?.ttsAutoOnSelect) {
+      speak(word.term)
+    }
+  }, [word?.id, settings?.ttsEnabled, settings?.ttsAutoOnSelect]) // 监听word.id和TTS设置的变化，移除speak避免重复播放
+
   if (!word) return (
     <div className="detail-pane">
       <div className="detail-empty">

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import type { Settings } from '../../../shared/types'
+import type { Settings, AIModelConfig } from '../../../shared/types'
 import { useTranslation } from 'react-i18next'
 import { exportDB, importDB, backupList, backupNow, backupOpenDir, backupRestore, resetAll } from '../../lib/ipc'
+import AIModelConfigComponent from './AIModelConfig'
 
 export default function SettingsView({ settings, onSave }: { settings: Settings; onSave: (s: Partial<Settings>) => void }) {
   const [local, setLocal] = useState(settings)
@@ -172,6 +173,18 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
         <div className="settings-section-title">🤖 {t('settings.section.ai')}</div>
         
         <div className="form-group">
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              checked={!!local.aiEnabled} 
+              onChange={e => setLocal({ ...local, aiEnabled: e.target.checked })} 
+            />
+            <span className="form-label" style={{ marginBottom: 0 }}>启用AI自动处理</span>
+          </label>
+          <div className="form-help">开启后，收集够词汇数量后会自动发送给AI处理并保存结果</div>
+        </div>
+
+        <div className="form-group">
           <label className="form-label">{t('settings.responseMode')}</label>
           <select 
             className="select" 
@@ -207,6 +220,84 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
               style={{ height: 180 }}
             />
             <div className="form-help">{t('settings.promptTemplateHelp')}</div>
+          </div>
+        )}
+
+        {/* AI Model Configuration */}
+        {local.aiEnabled && (
+          <div className="form-group">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <label className="form-label">AI模型配置</label>
+              <button 
+                className="btn btn-sm" 
+                onClick={() => {
+                  const newModel: AIModelConfig = {
+                    id: Date.now().toString(),
+                    name: `模型 ${(local.aiModels?.length || 0) + 1}`,
+                    type: 'openai',
+                    apiUrl: 'https://api.openai.com/v1',
+                    apiKey: '',
+                    modelName: 'gpt-3.5-turbo',
+                    enabled: true,
+                    isDefault: !local.aiModels?.length,
+                    createdAt: Date.now()
+                  }
+                  const updatedModels = [...(local.aiModels || []), newModel]
+                  setLocal({ 
+                    ...local, 
+                    aiModels: updatedModels,
+                    defaultModelId: newModel.isDefault ? newModel.id : local.defaultModelId
+                  })
+                }}
+              >
+                添加模型
+              </button>
+            </div>
+            
+            {(local.aiModels || []).map((model) => (
+              <AIModelConfigComponent
+                key={model.id}
+                model={model}
+                isDefault={model.id === local.defaultModelId}
+                onUpdate={(updatedModel) => {
+                  const updatedModels = (local.aiModels || []).map(m => 
+                    m.id === updatedModel.id ? updatedModel : m
+                  )
+                  setLocal({ ...local, aiModels: updatedModels })
+                }}
+                onDelete={(id) => {
+                  const updatedModels = (local.aiModels || []).filter(m => m.id !== id)
+                  setLocal({ 
+                    ...local, 
+                    aiModels: updatedModels,
+                    defaultModelId: local.defaultModelId === id ? undefined : local.defaultModelId
+                  })
+                }}
+                onSetDefault={(id) => {
+                  const updatedModels = (local.aiModels || []).map(m => ({
+                    ...m,
+                    isDefault: m.id === id
+                  }))
+                  setLocal({ 
+                    ...local, 
+                    aiModels: updatedModels,
+                    defaultModelId: id
+                  })
+                }}
+              />
+            ))}
+            
+            {(!local.aiModels || local.aiModels.length === 0) && (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: 20, 
+                color: 'var(--muted)',
+                border: '1px dashed var(--border)',
+                borderRadius: 8
+              }}>
+                暂无AI模型配置，点击"添加模型"开始配置
+              </div>
+            )}
           </div>
         )}
       </div>

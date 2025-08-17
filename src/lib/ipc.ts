@@ -40,4 +40,15 @@ export const resetAll = () => ipcInvoke('db:resetAll')
 // TTS
 export const ttsVolcQuery = (text: string) => ipcInvoke('tts:volc:query', text)
 
+// AI Model Management
+export const testAIModel = (modelConfig: any) => ipcInvoke('test-ai-model', modelConfig)
+export const processWordsWithAI = (words: string[], modelId: string) => ipcInvoke('process-words-with-ai', words, modelId)
+export const getAIProcessingStatus = () => ipcInvoke('get-ai-processing-status')
+export const cancelAIProcessing = () => ipcInvoke('cancel-ai-processing')
+
+// AI Processing Windows
+export const createAIProcessingWindow = () => ipcInvoke('create-ai-processing-window')
+export const showWordConfirmation = (words: string[]) => ipcInvoke('show-word-confirmation', words)
+export const startAIProcessing = (confirmedWords: string[]) => ipcInvoke('start-ai-processing', confirmedWords)
+
 

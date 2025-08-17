@@ -19,6 +19,20 @@ export type Word = {
   deletedAt?: number
 }
 
+export type AIModelConfig = {
+  id: string
+  name: string
+  type: 'openai' | 'anthropic' | 'deepseek' | 'google' | 'custom'
+  apiUrl: string
+  apiKey: string
+  modelName: string
+  enabled: boolean
+  isDefault: boolean
+  createdAt: number
+  lastTested?: number
+  testResult?: boolean
+}
+
 export type Settings = {
   triggerThreshold: number
   promptTemplate: string
@@ -50,6 +64,10 @@ export type Settings = {
   // Daily goal & reminders
   dailyGoal?: number
   reviewReminderTimes?: string[] // e.g. ["09:00","21:30"]
+  // AI Integration
+  aiEnabled?: boolean
+  aiModels?: AIModelConfig[]
+  defaultModelId?: string
 }
 
 
