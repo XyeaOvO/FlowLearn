@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Settings, AIModelConfig } from '../../../shared/types'
 import { useTranslation } from 'react-i18next'
 import { exportDB, importDB, backupList, backupNow, backupOpenDir, backupRestore, resetAll } from '../../lib/ipc'
@@ -11,6 +11,13 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
   const [opMsg, setOpMsg] = useState<string>('')
   const [backups, setBackups] = useState<Array<{ fileName: string; fullPath: string; size: number; mtime: number }>>([])
   const { t } = useTranslation()
+  // 分区 refs 与激活态
+  const basicRef = useRef<HTMLDivElement | null>(null)
+  const filtersRef = useRef<HTMLDivElement | null>(null)
+  const aiRef = useRef<HTMLDivElement | null>(null)
+  const ttsRef = useRef<HTMLDivElement | null>(null)
+  const dataRef = useRef<HTMLDivElement | null>(null)
+  const [active, setActive] = useState<'basic' | 'filters' | 'ai' | 'tts' | 'data'>('basic')
   const loadBackups = async () => {
     try {
       const r = await backupList() as { ok: boolean; list?: Array<{ fileName: string; fullPath: string; size: number; mtime: number }>; error?: string }
@@ -35,10 +42,47 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
     }
   }, [])
   useEffect(() => { loadBackups() }, [])
-  
+  const scrollTo = (ref: React.RefObject<HTMLDivElement>, key: typeof active) => {
+    try {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setActive(key)
+    } catch {}
+  }
+
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      const map = new Map<HTMLElement, typeof active>([
+        [basicRef.current as any, 'basic'],
+        [filtersRef.current as any, 'filters'],
+        [aiRef.current as any, 'ai'],
+        [ttsRef.current as any, 'tts'],
+        [dataRef.current as any, 'data'],
+      ])
+      const visible = entries
+        .filter(e => e.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+      if (visible[0]?.target) {
+        const key = map.get(visible[0].target as HTMLElement)
+        if (key) setActive(key)
+      }
+    }, { root: null, rootMargin: '-20% 0px -70% 0px', threshold: 0.1 })
+    const targets = [basicRef.current, filtersRef.current, aiRef.current, ttsRef.current, dataRef.current]
+    targets.forEach(el => { if (el) observer.observe(el) })
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <div className="settings-container">
-      <div className="settings-section">
+    <div className="settings-layout">
+      <nav className="settings-nav">
+        <button className={`settings-nav-item ${active === 'basic' ? 'active' : ''}`} onClick={() => scrollTo(basicRef, 'basic')}>⚙️ {t('settings.section.basic')}</button>
+        <button className={`settings-nav-item ${active === 'filters' ? 'active' : ''}`} onClick={() => scrollTo(filtersRef, 'filters')}>🔍 {t('settings.section.filters')}</button>
+        <button className={`settings-nav-item ${active === 'ai' ? 'active' : ''}`} onClick={() => scrollTo(aiRef, 'ai')}>🤖 {t('settings.section.ai')}</button>
+        <button className={`settings-nav-item ${active === 'tts' ? 'active' : ''}`} onClick={() => scrollTo(ttsRef, 'tts')}>🔊 {t('settings.section.tts')}</button>
+        <button className={`settings-nav-item ${active === 'data' ? 'active' : ''}`} onClick={() => scrollTo(dataRef, 'data')}>💾 {t('data.section')}</button>
+      </nav>
+      <div className="settings-content">
+        <div className="settings-container">
+      <div ref={basicRef} className="settings-section">
         <div className="settings-section-title">⚙️ {t('settings.section.basic')}</div>
         
         <div className="form-group">
@@ -124,6 +168,110 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
           <div className="form-help">{t('settings.hotkeyHelp')}</div>
         </div>
 
+        {/* 新增多种快捷键配置 */}
+        <div className="form-group">
+          <label className="form-label">{t('settings.hotkeys')}</label>
+          <div className="hotkeys-grid">
+            <div className="hotkey-item">
+              <label className="hotkey-label">{t('settings.hotkeyAddFromClipboard')}</label>
+              <input 
+                className="input" 
+                value={local.hotkeys?.addFromClipboard || ''} 
+                onChange={e => setLocal({ 
+                  ...local, 
+                  hotkeys: { ...local.hotkeys, addFromClipboard: e.target.value }
+                })} 
+                placeholder="Ctrl+Shift+Y"
+              />
+            </div>
+            <div className="hotkey-item">
+              <label className="hotkey-label">{t('settings.hotkeyShowHideWindow')}</label>
+              <input 
+                className="input" 
+                value={local.hotkeys?.showHideWindow || ''} 
+                onChange={e => setLocal({ 
+                  ...local, 
+                  hotkeys: { ...local.hotkeys, showHideWindow: e.target.value }
+                })} 
+                placeholder="Ctrl+Shift+H"
+              />
+            </div>
+            <div className="hotkey-item">
+              <label className="hotkey-label">{t('settings.hotkeyProcessBasket')}</label>
+              <input 
+                className="input" 
+                value={local.hotkeys?.processBasket || ''} 
+                onChange={e => setLocal({ 
+                  ...local, 
+                  hotkeys: { ...local.hotkeys, processBasket: e.target.value }
+                })} 
+                placeholder="Ctrl+Shift+P"
+              />
+            </div>
+            <div className="hotkey-item">
+              <label className="hotkey-label">{t('settings.hotkeyClearBasket')}</label>
+              <input 
+                className="input" 
+                value={local.hotkeys?.clearBasket || ''} 
+                onChange={e => setLocal({ 
+                  ...local, 
+                  hotkeys: { ...local.hotkeys, clearBasket: e.target.value }
+                })} 
+                placeholder="Ctrl+Shift+C"
+              />
+            </div>
+            <div className="hotkey-item">
+              <label className="hotkey-label">{t('settings.hotkeyTogglePause')}</label>
+              <input 
+                className="input" 
+                value={local.hotkeys?.togglePause || ''} 
+                onChange={e => setLocal({ 
+                  ...local, 
+                  hotkeys: { ...local.hotkeys, togglePause: e.target.value }
+                })} 
+                placeholder="Ctrl+Shift+S"
+              />
+            </div>
+            <div className="hotkey-item">
+              <label className="hotkey-label">{t('settings.hotkeyOpenSettings')}</label>
+              <input 
+                className="input" 
+                value={local.hotkeys?.openSettings || ''} 
+                onChange={e => setLocal({ 
+                  ...local, 
+                  hotkeys: { ...local.hotkeys, openSettings: e.target.value }
+                })} 
+                placeholder="Ctrl+Shift+O"
+              />
+            </div>
+            <div className="hotkey-item">
+              <label className="hotkey-label">{t('settings.hotkeyStartReview')}</label>
+              <input 
+                className="input" 
+                value={local.hotkeys?.startReview || ''} 
+                onChange={e => setLocal({ 
+                  ...local, 
+                  hotkeys: { ...local.hotkeys, startReview: e.target.value }
+                })} 
+                placeholder="Ctrl+Shift+R"
+              />
+            </div>
+            <div className="hotkey-item">
+              <label className="hotkey-label">{t('settings.hotkeyQuickAdd')}</label>
+              <input 
+                className="input" 
+                value={local.hotkeys?.quickAdd || ''} 
+                onChange={e => setLocal({ 
+                  ...local, 
+                  hotkeys: { ...local.hotkeys, quickAdd: e.target.value }
+                })} 
+                placeholder="Ctrl+Shift+A"
+              />
+            </div>
+          </div>
+          <div className="form-help">{t('settings.hotkeysHelp')}</div>
+        </div>
+
           <div className="form-row">
           <div className="form-group">
             <label className="form-label">{t('settings.theme')}</label>
@@ -153,7 +301,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
         </div>
       </div>
       
-      <div className="settings-section">
+      <div ref={filtersRef} className="settings-section">
         <div className="settings-section-title">🔍 {t('settings.section.filters')}</div>
         
         <div className="form-group">
@@ -169,7 +317,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
         </div>
       </div>
       
-      <div className="settings-section">
+      <div ref={aiRef} className="settings-section">
         <div className="settings-section-title">🤖 {t('settings.section.ai')}</div>
         
         <div className="form-group">
@@ -302,7 +450,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
         )}
       </div>
 
-      <div className="settings-section">
+      <div ref={ttsRef} className="settings-section">
         <div className="settings-section-title">🔊 {t('settings.section.tts')}</div>
         <div className="form-group">
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
@@ -453,7 +601,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
         )}
       </div>
       
-      <div className="settings-section">
+      <div ref={dataRef} className="settings-section">
         <div className="settings-section-title">💾 {t('data.section')}</div>
         <div className="form-group">
           <label className="form-label">{t('settings.importExportLabel')}</label>
@@ -556,6 +704,8 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
         <button className="btn" onClick={() => setLocal(settings)}>
           {t('actions.reset')}
         </button>
+      </div>
+        </div>
       </div>
     </div>
   )

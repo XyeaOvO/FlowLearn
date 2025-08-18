@@ -2020,6 +2020,47 @@ html[data-theme="dark"] .stat-icon.mastered {
 }
 
 /* Settings */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 16px;
+  height: calc(100vh - 64px);
+}
+
+.settings-nav {
+  padding: 16px;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.settings-nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.settings-nav-item:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.settings-nav-item.active {
+  background: var(--panel);
+  color: var(--primary);
+  border-color: var(--border);
+}
+
+.settings-content {
+  overflow: hidden;
+}
+
 .settings-container {
   width: 100%;
   max-width: 900px;
@@ -2299,6 +2340,26 @@ label[style*="display: flex"]:hover {
 }
 
 @media (max-width: 768px) {
+  .settings-layout {
+    display: block;
+  }
+  .settings-nav {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-secondary);
+  }
+  .settings-nav-item {
+    flex: 0 0 auto;
+    margin: 0;
+    white-space: nowrap;
+  }
   .sidebar {
     width: 240px;
   }
@@ -3198,4 +3259,38 @@ label[style*="display: flex"]:hover {
 
 .ai-model-config .form-group:last-child {
   margin-bottom: 0;
+}
+
+/* 快捷键配置样式 */
+.hotkeys-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.hotkey-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hotkey-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.hotkey-item .input {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+  height: 32px;
+}
+
+@media (max-width: 768px) {
+  .hotkeys-grid {
+    grid-template-columns: 1fr;
+  }
 }

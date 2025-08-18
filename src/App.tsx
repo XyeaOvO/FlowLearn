@@ -122,11 +122,17 @@ function App() {
       setShowWordConfirmationModal(true)
     })
     
+    // 监听快捷键切换页面事件
+    window.api.on('switch-to-settings', () => setTab('settings'))
+    window.api.on('switch-to-review', () => setTab('review'))
+    
     return () => {
       window.api.off('db-updated', handler as any)
       window.api.off('basket-updated', handler as any)
       window.api.off('show-ai-processing-window', handler as any)
       window.api.off('show-word-confirmation-modal', handler as any)
+      window.api.off('switch-to-settings', handler as any)
+      window.api.off('switch-to-review', handler as any)
     }
   }, [])
 

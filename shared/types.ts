@@ -41,6 +41,17 @@ export type Settings = {
   ignoreMultiline: boolean
   regexExcludes: string[]
   hotkey: string
+  // 新增多种快捷键配置
+  hotkeys: {
+    addFromClipboard: string
+    showHideWindow: string
+    processBasket: string
+    clearBasket: string
+    togglePause: string
+    openSettings: string
+    startReview: string
+    quickAdd: string
+  }
   responseMode: 'rich-summary' | 'json-only'
   richHeader: string
   ttsEnabled?: boolean

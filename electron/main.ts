@@ -87,6 +87,17 @@ type Settings = {
   ignoreMultiline: boolean
   regexExcludes: string[]
   hotkey: string
+  // 新增多种快捷键配置
+  hotkeys: {
+    addFromClipboard: string
+    showHideWindow: string
+    processBasket: string
+    clearBasket: string
+    togglePause: string
+    openSettings: string
+    startReview: string
+    quickAdd: string
+  }
   onboarded?: boolean
   responseMode: 'rich-summary' | 'json-only'
   richHeader: string
@@ -151,11 +162,25 @@ function migrateSettings(input: Settings): Settings {
     changed = true
   }
   const { responseMode: inResp, richHeader: inHeader, ...rest } = input as Settings
+  
+  // 处理快捷键配置迁移
+  const defaultHotkeys = {
+    addFromClipboard: process.platform === 'darwin' ? 'CommandOrControl+Shift+Y' : 'Control+Shift+Y',
+    showHideWindow: process.platform === 'darwin' ? 'CommandOrControl+Shift+H' : 'Control+Shift+H',
+    processBasket: process.platform === 'darwin' ? 'CommandOrControl+Shift+P' : 'Control+Shift+P',
+    clearBasket: process.platform === 'darwin' ? 'CommandOrControl+Shift+C' : 'Control+Shift+C',
+    togglePause: process.platform === 'darwin' ? 'CommandOrControl+Shift+S' : 'Control+Shift+S',
+    openSettings: process.platform === 'darwin' ? 'CommandOrControl+Shift+O' : 'Control+Shift+O',
+    startReview: process.platform === 'darwin' ? 'CommandOrControl+Shift+R' : 'Control+Shift+R',
+    quickAdd: process.platform === 'darwin' ? 'CommandOrControl+Shift+A' : 'Control+Shift+A'
+  }
+  
   const output: Settings = {
     ...rest,
     responseMode: (inResp as any) ?? 'rich-summary',
     richHeader: (inHeader as any) ?? '你现在是我的专属英语语言导师，请用资深编辑的专业水准和清晰的教学逻辑，为我对下列文本进行深入、全面、条理清晰且通俗易懂的中文讲解。根据输入的类型（单词/短语/句子/段落），自动选择以下一个或多个维度进行分析：1) 释义与词性 2) 语体与细微差别 3) 常见搭配与高质量例句 4) 近义词辨析 5) 词源趣闻（若有） 6) 对句子/段落的整体解读与翻译、结构拆解、修辞与文体分析、潜在意图。请保持鼓励语气。最后在输出的最末尾，用 BEGIN_FLOWLEARN_JSON 和 END_FLOWLEARN_JSON 包裹一个严格 JSON，总结每一项的：term, definition, phonetic, example, domain（若未知留空字符串）。不要在该 JSON 外围添加任何文字。',
     promptTemplate: tpl,
+    hotkeys: (input as any).hotkeys ? { ...defaultHotkeys, ...(input as any).hotkeys } : defaultHotkeys,
     ttsProvider: (input as any).ttsProvider ?? 'local',
     theme: (input as any).theme ?? 'system',
     locale: (input as any).locale ?? 'zh',
@@ -190,6 +215,17 @@ function getSettings(): Settings {
     onboarded: false,
     responseMode: 'rich-summary',
     richHeader: '你现在是我的专属英语语言导师，请用资深编辑的专业水准和清晰的教学逻辑，为我对下列文本进行深入、全面、条理清晰且通俗易懂的中文讲解。根据输入的类型（单词/短语/句子/段落），自动选择以下一个或多个维度进行分析：1) 释义与词性 2) 语体与细微差别 3) 常见搭配与高质量例句 4) 近义词辨析 5) 词源趣闻（若有） 6) 对句子/段落的整体解读与翻译、结构拆解、修辞与文体分析、潜在意图。请保持鼓励语气。最后在输出的最末尾，用 BEGIN_FLOWLEARN_JSON 和 END_FLOWLEARN_JSON 包裹一个严格 JSON，总结每一项的：term, definition, phonetic, example, domain（若未知留空字符串）。不要在该 JSON 外围添加任何文字。',
+    // 快捷键配置
+    hotkeys: {
+      addFromClipboard: process.platform === 'darwin' ? 'CommandOrControl+Shift+Y' : 'Control+Shift+Y',
+      showHideWindow: process.platform === 'darwin' ? 'CommandOrControl+Shift+H' : 'Control+Shift+H',
+      processBasket: process.platform === 'darwin' ? 'CommandOrControl+Shift+P' : 'Control+Shift+P',
+      clearBasket: process.platform === 'darwin' ? 'CommandOrControl+Shift+C' : 'Control+Shift+C',
+      togglePause: process.platform === 'darwin' ? 'CommandOrControl+Shift+S' : 'Control+Shift+S',
+      openSettings: process.platform === 'darwin' ? 'CommandOrControl+Shift+O' : 'Control+Shift+O',
+      startReview: process.platform === 'darwin' ? 'CommandOrControl+Shift+R' : 'Control+Shift+R',
+      quickAdd: process.platform === 'darwin' ? 'CommandOrControl+Shift+A' : 'Control+Shift+A'
+    },
     // TTS defaults
     ttsEnabled: true,
     ttsAutoOnSelect: true,
@@ -220,8 +256,8 @@ function setSettings(newSettings: Partial<Settings>) {
   const current = getSettings()
   const merged = { ...current, ...newSettings }
   writeJsonFile(settingsFile, merged)
-  // Re-register hotkey when changed
-  registerGlobalHotkey(merged.hotkey)
+  // Re-register all hotkeys when settings change
+  registerAllHotkeys(merged.hotkeys)
   try { updateTrayMenu() } catch {}
   try { scheduleReviewReminders() } catch {}
 }
@@ -593,6 +629,14 @@ function handleClipboardText(text: string) {
   updateTrayMenu()
   const s2 = getSettings()
   if (basket.length >= s2.triggerThreshold) {
+    // 自动从托盘弹出窗口
+    if (win && !win.isVisible()) {
+      win.show()
+      win.focus()
+    } else if (!win) {
+      createWindow()
+    }
+    
     if (s2.aiEnabled) {
       // Auto AI processing
       triggerPromptWithAI()
@@ -600,7 +644,7 @@ function handleClipboardText(text: string) {
       // Manual mode
       const n = new Notification({
         title: '已收集生词',
-        body: `您已收集 ${basket.length} 个生词，点击通知复制学习 Prompt。`,
+        body: `您已收集 ${basket.length} 个生词，应用窗口已自动弹出。`,
       })
       n.on('click', () => triggerPrompt())
       n.show()
@@ -710,17 +754,175 @@ function forceAddTermFromClipboard() {
   updateTrayMenu()
 }
 
-let registeredHotkey = ''
-function registerGlobalHotkey(hotkey: string) {
+// 存储所有已注册的快捷键
+let registeredHotkeys: { [key: string]: string } = {}
+
+// 注册单个快捷键
+function registerHotkey(hotkey: string, callback: () => void): boolean {
   try {
-    if (registeredHotkey) {
-      globalShortcut.unregister(registeredHotkey)
-      registeredHotkey = ''
+    if (registeredHotkeys[hotkey]) {
+      globalShortcut.unregister(registeredHotkeys[hotkey])
+      delete registeredHotkeys[hotkey]
     }
-    if (hotkey && globalShortcut.register(hotkey, () => forceAddTermFromClipboard())) {
-      registeredHotkey = hotkey
+    if (hotkey && globalShortcut.register(hotkey, callback)) {
+      registeredHotkeys[hotkey] = hotkey
+      return true
     }
   } catch {}
+  return false
+}
+
+// 注册所有快捷键
+function registerAllHotkeys(hotkeys: Settings['hotkeys']) {
+  // 先清除所有已注册的快捷键
+  Object.values(registeredHotkeys).forEach(hotkey => {
+    try {
+      globalShortcut.unregister(hotkey)
+    } catch {}
+  })
+  registeredHotkeys = {}
+  
+  // 注册新的快捷键
+  registerHotkey(hotkeys.addFromClipboard, () => forceAddTermFromClipboard())
+  registerHotkey(hotkeys.showHideWindow, () => toggleWindowVisibility())
+  registerHotkey(hotkeys.processBasket, () => processBasketWithHotkey())
+  registerHotkey(hotkeys.clearBasket, () => clearBasketWithHotkey())
+  registerHotkey(hotkeys.togglePause, () => togglePauseWithHotkey())
+  registerHotkey(hotkeys.openSettings, () => openSettingsWithHotkey())
+  registerHotkey(hotkeys.startReview, () => startReviewWithHotkey())
+  registerHotkey(hotkeys.quickAdd, () => quickAddWithHotkey())
+}
+
+// 兼容旧的快捷键注册函数（保留用于向后兼容）
+// @ts-ignore
+function registerGlobalHotkey(hotkey: string) {
+  registerHotkey(hotkey, () => forceAddTermFromClipboard())
+}
+
+// 快捷键回调函数
+function toggleWindowVisibility() {
+  if (!win) {
+    createWindow()
+    return
+  }
+  if (win.isVisible()) {
+    win.hide()
+  } else {
+    win.show()
+    win.focus()
+  }
+}
+
+function processBasketWithHotkey() {
+  if (basket.length === 0) {
+    new Notification({
+      title: '生词篮为空',
+      body: '请先添加一些词汇到生词篮中'
+    }).show()
+    return
+  }
+  
+  const settings = getSettings()
+  if (settings.aiEnabled) {
+    triggerPromptWithAI()
+  } else {
+    triggerPrompt()
+  }
+}
+
+function clearBasketWithHotkey() {
+  if (basket.length === 0) {
+    new Notification({
+      title: '生词篮已为空',
+      body: '没有需要清空的内容'
+    }).show()
+    return
+  }
+  
+  const count = basket.length
+  basket = []
+  win?.webContents.send('basket-updated', basket)
+  updateTrayMenu()
+  
+  new Notification({
+    title: '生词篮已清空',
+    body: `已清空 ${count} 个词汇`
+  }).show()
+}
+
+function togglePauseWithHotkey() {
+  isPaused = !isPaused
+  updateTrayMenu()
+  
+  new Notification({
+    title: isPaused ? '已暂停监听' : '已恢复监听',
+    body: isPaused ? '剪贴板监听已暂停' : '剪贴板监听已恢复'
+  }).show()
+}
+
+function openSettingsWithHotkey() {
+  if (!win) {
+    createWindow()
+  } else if (!win.isVisible()) {
+    win.show()
+    win.focus()
+  }
+  
+  // 发送切换到设置页面的信号
+  win?.webContents.send('switch-to-settings')
+  
+  new Notification({
+    title: '打开设置',
+    body: '已切换到设置页面'
+  }).show()
+}
+
+function startReviewWithHotkey() {
+  if (!win) {
+    createWindow()
+  } else if (!win.isVisible()) {
+    win.show()
+    win.focus()
+  }
+  
+  // 发送切换到复习页面的信号
+  win?.webContents.send('switch-to-review')
+  
+  new Notification({
+    title: '开始复习',
+    body: '已切换到复习页面'
+  }).show()
+}
+
+function quickAddWithHotkey() {
+  const text = clipboard.readText().trim()
+  if (!text) {
+    new Notification({
+      title: '剪贴板为空',
+      body: '请先复制要添加的词汇'
+    }).show()
+    return
+  }
+  
+  // 快速添加单个词汇（绕过过滤）
+  const now = Date.now()
+  const existing = basket.find(b => normalizeText(b.term) === normalizeText(text))
+  if (existing) {
+    new Notification({
+      title: '词汇已存在',
+      body: `"${text}" 已在生词篮中`
+    }).show()
+    return
+  }
+  
+  basket.push({ term: text, addedAt: now })
+  win?.webContents.send('basket-updated', basket)
+  updateTrayMenu()
+  
+  new Notification({
+    title: '快速添加成功',
+    body: `"${text}" 已添加到生词篮`
+  }).show()
 }
 
 function saveWordsWithAnalysis(items: Array<{ term: string; definition: string; phonetic: string; example: string; domain?: string }>, fullText?: string) {
@@ -1559,6 +1761,9 @@ async function handleStreamResponse(response: Response, type: string): Promise<s
               case 'anthropic':
                 content = parsed.delta?.text || ''
                 break
+              case 'google':
+                content = parsed.choices?.[0]?.message?.content || ''
+                break
               default:
                 content = ''
             }
@@ -1652,7 +1857,14 @@ async function triggerPromptWithAI() {
   
   const words = basket.map(b => b.term)
   
-  // 显示单词确认弹窗
+  // 确保窗口可见并显示单词确认弹窗
+  if (win && !win.isVisible()) {
+    win.show()
+    win.focus()
+  } else if (!win) {
+    createWindow()
+  }
+  
   if (win) {
     win.webContents.send('show-word-confirmation-modal', words)
   }
@@ -1690,7 +1902,14 @@ async function startAIProcessing(confirmedWords: string[]) {
     streamContent: ''
   }
   
-  // 显示AI处理窗口
+  // 确保窗口可见并显示AI处理窗口
+  if (win && !win.isVisible()) {
+    win.show()
+    win.focus()
+  } else if (!win) {
+    createWindow()
+  }
+  
   if (win) {
     win.webContents.send('show-ai-processing-window')
     // 发送清空流式内容的信号
@@ -1836,6 +2055,9 @@ app.whenReady().then(() => {
   createWindow()
   updateTrayMenu = createTray()
   startClipboardWatcher()
+  // 注册所有快捷键
+  const settings = getSettings()
+  registerAllHotkeys(settings.hotkeys)
   // Ensure existing词条具备初始复习时间
   autoScheduleMissingDueDates()
   // 自动备份（每日一次）
