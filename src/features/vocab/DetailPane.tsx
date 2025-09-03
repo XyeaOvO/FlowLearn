@@ -28,7 +28,7 @@ export default function DetailPane({
 }) {
   const { t } = useTranslation()
   
-  // 当选中新词条时自动播放发音（如果启用了自动播放设置）
+
   const handleAutoSpeak = useCallback(() => {
     if (word && word.term && settings?.ttsEnabled && settings?.ttsAutoOnSelect) {
       speak(word.term)
@@ -90,56 +90,56 @@ export default function DetailPane({
               <div className="detail-section-title">{t('detail.fsrs')}</div>
               <div className="detail-section-content">
                 {(() => {
-                  const d = (word.fsrsDifficulty ?? null)
-                  const s = (word.fsrsStability ?? null)
-                  const reps = word.fsrsReps ?? 0
-                  const lapses = word.fsrsLapses ?? 0
-                  const last = word.fsrsLastReviewedAt ?? null
-                  const now = Date.now()
-                  let r = 0
-                  if (last && s && s > 0) {
-                    const elapsedDays = (now - last) / (24 * 60 * 60 * 1000)
-                    r = Math.exp(Math.log(0.9) * (elapsedDays / s))
-                    if (!isFinite(r) || r < 0) r = 0
-                    if (r > 1) r = 1
+                  const difficulty = (word.fsrsDifficulty ?? null)
+                  const stability = (word.fsrsStability ?? null)
+                  const repetitions = word.fsrsReps ?? 0
+                  const lapseCount = word.fsrsLapses ?? 0
+                  const lastReviewedAt = word.fsrsLastReviewedAt ?? null
+                  const currentTime = Date.now()
+                  let retrievability = 0
+                  if (lastReviewedAt && stability && stability > 0) {
+                    const elapsedDays = (currentTime - lastReviewedAt) / (24 * 60 * 60 * 1000)
+                    retrievability = Math.exp(Math.log(0.9) * (elapsedDays / stability))
+                    if (!isFinite(retrievability) || retrievability < 0) retrievability = 0
+                    if (retrievability > 1) retrievability = 1
                   } else {
-                    r = 0
+                    retrievability = 0
                   }
-                  const rPct = Math.round(r * 100)
+                  const retrievabilityPercentage = Math.round(retrievability * 100)
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div className="meta-label">{t('detail.difficulty')}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span className="badge badge-neutral">{d ? `${d}/10` : '—'}</span>
+                          <span className="badge badge-neutral">{difficulty ? `${difficulty}/10` : '—'}</span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div className="meta-label">{t('detail.stability')}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span className="badge badge-neutral">{s != null ? `${(s as number).toFixed(1)} d` : '—'}</span>
+                          <span className="badge badge-neutral">{stability != null ? `${(stability as number).toFixed(1)} d` : '—'}</span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div className="meta-label">{t('detail.retrievability')}</div>
                         <div>
                           <div style={{ height: 8, background: 'var(--border-subtle)', borderRadius: 999, overflow: 'hidden' }}>
-                            <div style={{ width: `${rPct}%`, height: '100%', background: 'var(--primary)', transition: 'width .2s ease' }} />
+                            <div style={{ width: `${retrievabilityPercentage}%`, height: '100%', background: 'var(--primary)', transition: 'width .2s ease' }} />
                           </div>
-                          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{rPct}%</div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>{retrievabilityPercentage}%</div>
                         </div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div className="meta-label">{t('detail.reps')}</div>
-                        <div className="badge badge-neutral">{reps}</div>
+                        <div className="badge badge-neutral">{repetitions}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div className="meta-label">{t('detail.lapses')}</div>
-                        <div className="badge badge-neutral">{lapses}</div>
+                        <div className="badge badge-neutral">{lapseCount}</div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div className="meta-label">{t('detail.lastReviewedAt')}</div>
-                        <div className="badge badge-neutral">{last ? formatDate(last) : '—'}</div>
+                        <div className="badge badge-neutral">{lastReviewedAt ? formatDate(lastReviewedAt) : '—'}</div>
                       </div>
                     </div>
                   )

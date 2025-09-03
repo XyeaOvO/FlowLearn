@@ -31,7 +31,7 @@ export function filterWords(words: Word[], f: VocabFilter): Word[] {
     const fields = [w.term, w.definition, w.example, w.phonetic]
     const okQuery = re
       ? (re.test(fields.join('\n')))
-      : (!q || fields.some(val => (val || '').toLowerCase().includes(q)))
+      : (!q || fields.some(fieldValue => (fieldValue || '').toLowerCase().includes(q)))
     const okStatus = f.status === 'all' || w.reviewStatus === f.status
     const okDate = (!fromTs || w.addedAt >= fromTs) && (!toTs || w.addedAt <= toTs)
     const okDomain = !f.domain || f.domain === 'all' || (w.domain || '').trim() === f.domain

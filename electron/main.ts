@@ -2,6 +2,7 @@ import { app, BrowserWindow, Tray, Menu, clipboard, Notification, ipcMain, nativ
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
+import { DatabaseManager, getDatabaseManager, closeDatabaseManager } from '../src/lib/database'
 
 type CollectedItem = {
   term: string
@@ -60,10 +61,14 @@ let reminderInterval: NodeJS.Timeout | null = null
 let reminderFiredKeysForToday = new Set<string>()
 let isAppQuitting = false // 标记应用是否正在退出
 
-// Settings (simple file storage)
+// Settings and database paths
 const settingsFile = path.join(app.getPath('userData'), 'settings.json')
-const dbFile = path.join(app.getPath('userData'), 'vocab.json')
+const dbFile = path.join(app.getPath('userData'), 'vocab.json') // 保留用于迁移
+const sqliteDbPath = path.join(app.getPath('userData'), 'vocab.db')
 const backupDir = path.join(app.getPath('userData'), 'backups')
+
+// Database manager instance
+let dbManager: DatabaseManager | null = null
 
 type AIModelConfig = {
   id: string
@@ -270,11 +275,43 @@ function setSettings(newSettings: Partial<Settings>) {
   }
 }
 
+// 初始化数据库管理器
+function initializeDatabase() {
+  try {
+    dbManager = getDatabaseManager(sqliteDbPath)
+    
+    // 检查是否需要从JSON迁移数据
+    if (fs.existsSync(dbFile)) {
+      console.log('检测到旧的JSON数据库文件，开始迁移...')
+      dbManager.migrateFromJSON(dbFile).then(result => {
+        console.log(`数据迁移完成: 成功迁移 ${result.migrated} 条记录`)
+        if (result.errors.length > 0) {
+          console.warn('迁移过程中的错误:', result.errors)
+        }
+        // 通知渲染进程数据库已更新
+        win?.webContents.send('db-updated')
+      }).catch(error => {
+        console.error('数据迁移失败:', error)
+      })
+    }
+  } catch (error) {
+    console.error('数据库初始化失败:', error)
+  }
+}
+
+// 兼容性函数：读取数据库
 function readDB(): StoredWord[] {
+  if (dbManager) {
+    return dbManager.getAllWords()
+  }
+  // 回退到JSON文件
   return readJsonFile<StoredWord[]>(dbFile, [])
 }
 
+// 兼容性函数：写入数据库（已弃用，使用具体的数据库操作）
 function writeDB(data: StoredWord[]) {
+  console.warn('writeDB函数已弃用，请使用具体的数据库操作方法')
+  // 为了兼容性，暂时保留
   writeJsonFile(dbFile, data)
 }
 
@@ -365,6 +402,8 @@ function createWindow() {
       contextIsolation: true,
       // 启用web安全
       webSecurity: true,
+      // 缓存相关配置
+      partition: 'persist:main'
     },
   })
 
@@ -951,39 +990,56 @@ function quickAddWithHotkey() {
 }
 
 function saveWordsWithAnalysis(items: Array<{ term: string; definition: string; phonetic: string; example: string; domain?: string }>, fullText?: string) {
-  const db = readDB()
   const now = Date.now()
   const analyses = fullText ? parseTermAnalyses(fullText) : {}
-  for (const it of items) {
-    const id = `${now}-${Math.random().toString(36).slice(2, 8)}`
-    db.push({
-      id,
-      term: it.term,
-      definition: it.definition,
-      phonetic: it.phonetic,
-      example: it.example,
-      domain: it.domain,
-      addedAt: now,
-      reviewStatus: 'new',
-      reviewDueDate: now,
-      analysis: analyses[normalizeText(it.term)] || fullText || '',
-      // Initialize FSRS fields
-      fsrsDifficulty: 5,
-      fsrsStability: 0.5, // days
-      fsrsLastReviewedAt: now,
-      fsrsReps: 0,
-      fsrsLapses: 0,
-    })
+  
+  if (dbManager) {
+    // 使用SQLite数据库
+    for (const it of items) {
+      const wordData = {
+        term: it.term,
+        definition: it.definition,
+        phonetic: it.phonetic,
+        example: it.example,
+        domain: it.domain,
+        addedAt: now,
+        reviewStatus: 'new' as const,
+        reviewDueDate: now,
+        analysis: analyses[normalizeText(it.term)] || fullText || '',
+        fsrsDifficulty: 5,
+        fsrsStability: 0.5,
+        fsrsLastReviewedAt: now,
+        fsrsReps: 0,
+        fsrsLapses: 0,
+      }
+      dbManager.addWord(wordData)
+    }
+    win?.webContents.send('db-updated')
+  } else {
+    // 回退到JSON操作
+    const db = readDB()
+    for (const it of items) {
+      const id = `${now}-${Math.random().toString(36).slice(2, 8)}`
+      db.push({
+        id,
+        term: it.term,
+        definition: it.definition,
+        phonetic: it.phonetic,
+        example: it.example,
+        domain: it.domain,
+        addedAt: now,
+        reviewStatus: 'new',
+        reviewDueDate: now,
+        analysis: analyses[normalizeText(it.term)] || fullText || '',
+        fsrsDifficulty: 5,
+        fsrsStability: 0.5,
+        fsrsLastReviewedAt: now,
+        fsrsReps: 0,
+        fsrsLapses: 0,
+      })
+    }
+    writeDB(db)
   }
-  writeDB(db)
-}
-
-function listWords() {
-  return readDB().filter(w => !w.deletedAt).sort((a, b) => b.addedAt - a.addedAt)
-}
-
-function listDeletedWords() {
-  return readDB().filter(w => !!w.deletedAt).sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0))
 }
 
 function autoScheduleMissingDueDates() {
@@ -997,82 +1053,6 @@ function autoScheduleMissingDueDates() {
     }
   }
   if (changed) writeDB(db)
-}
-
-function deleteWord(id: string) {
-  const db = readDB()
-  const idx = db.findIndex(w => w.id === id)
-  if (idx >= 0) {
-    db[idx].deletedAt = Date.now()
-    writeDB(db)
-    win?.webContents.send('db-updated')
-    try { updateTrayMenu() } catch {
-    // Failed to update tray menu
-  }
-  }
-}
-
-function restoreWord(id: string) {
-  const db = readDB()
-  const idx = db.findIndex(w => w.id === id)
-  if (idx >= 0) {
-    delete (db[idx] as any).deletedAt
-    writeDB(db)
-    win?.webContents.send('db-updated')
-    try { updateTrayMenu() } catch {
-       // Failed to update tray menu
-     }
-  }
-}
-
-function bulkUpdate(ids: string[], changes: Partial<StoredWord>) {
-  const db = readDB()
-  let changed = 0
-  for (const id of ids) {
-    const idx = db.findIndex(w => w.id === id)
-    if (idx >= 0) {
-      db[idx] = { ...db[idx], ...changes }
-      changed++
-    }
-  }
-  if (changed > 0) writeDB(db)
-  if (changed > 0) { win?.webContents.send('db-updated'); try { updateTrayMenu() } catch {
-    // Failed to update tray menu
-  } }
-  return changed
-}
-
-function bulkDelete(ids: string[]) {
-  const db = readDB()
-  const now = Date.now()
-  let changed = 0
-  for (const id of ids) {
-    const idx = db.findIndex(w => w.id === id)
-    if (idx >= 0 && !db[idx].deletedAt) {
-      db[idx].deletedAt = now
-      changed++
-    }
-  }
-  if (changed > 0) writeDB(db)
-  if (changed > 0) { win?.webContents.send('db-updated'); try { updateTrayMenu() } catch {
-     // Failed to update tray menu
-   } }
-  return changed
-}
-
-function bulkRestore(ids: string[]) {
-  const db = readDB()
-  let changed = 0
-  for (const id of ids) {
-    const idx = db.findIndex(w => w.id === id)
-    if (idx >= 0 && db[idx].deletedAt) {
-      delete (db[idx] as any).deletedAt
-      changed++
-    }
-  }
-  if (changed > 0) writeDB(db)
-  if (changed > 0) { win?.webContents.send('db-updated'); try { updateTrayMenu() } catch {} }
-  return changed
 }
 
 function parseTermAnalyses(fullText: string): Record<string, string> {
@@ -1100,14 +1080,7 @@ function parseTermAnalyses(fullText: string): Record<string, string> {
   return result
 }
 
-function updateWord(updated: StoredWord) {
-  const db = readDB()
-  const idx = db.findIndex(w => w.id === updated.id)
-  if (idx >= 0) {
-    db[idx] = updated
-    writeDB(db)
-  }
-}
+
 
 type ReviewGrade = 'again' | 'hard' | 'good' | 'easy'
 
@@ -1134,60 +1107,300 @@ function computeRetrievability(nowMs: number, lastReviewedAt?: number, stability
 }
 
 function applyReviewResult(id: string, grade: ReviewGrade) {
-  const db = readDB()
-  const idx = db.findIndex(w => w.id === id)
-  if (idx < 0) return
-  const now = Date.now()
-  const w = ensureFsrsDefaults(db[idx])
-  const d = w.fsrsDifficulty as number
-  const s = w.fsrsStability as number
-  let newD = d
-  let newS = s
-  let dueMs = now + 24 * 60 * 60 * 1000
-  // Update difficulty & stability based on grade
-  switch (grade) {
-    case 'again':
-      newD = clamp(d + 1.0, 1, 10)
-      newS = Math.max(0.3, s * 0.5)
-      dueMs = now + 10 * 60 * 1000 // 10 min
-      w.fsrsLapses = (w.fsrsLapses || 0) + 1
-      w.reviewStatus = 'learning'
-      break
-    case 'hard':
-      newD = clamp(d + 0.5, 1, 10)
-      newS = Math.max(0.4, s * 1.2)
-      {
-        const days = Math.max(0.5, newS)
-        dueMs = now + days * 24 * 60 * 60 * 1000
-      }
-      w.reviewStatus = 'learning'
-      break
-    case 'good':
-      newD = clamp(d - 0.15, 1, 10)
-      newS = Math.max(0.5, s * 2.0)
-      {
-        const days = Math.max(1, newS)
-        dueMs = now + days * 24 * 60 * 60 * 1000
-      }
-      w.reviewStatus = newS >= 7 ? 'mastered' : 'learning'
-      break
-    case 'easy':
-      newD = clamp(d - 0.3, 1, 10)
-      newS = Math.max(0.6, s * 2.5)
-      {
-        const days = Math.max(2, newS * 1.2)
-        dueMs = now + days * 24 * 60 * 60 * 1000
-      }
-      w.reviewStatus = newS >= 7 ? 'mastered' : 'learning'
-      break
+  if (dbManager) {
+    // 使用SQLite数据库
+    const word = dbManager.getWordById(id)
+    if (!word) return
+    
+    const now = Date.now()
+    const w = ensureFsrsDefaults(word)
+    const d = w.fsrsDifficulty as number
+    const s = w.fsrsStability as number
+    let newD = d
+    let newS = s
+    let dueMs = now + 24 * 60 * 60 * 1000
+    
+    // Update difficulty & stability based on grade
+    switch (grade) {
+      case 'again':
+        newD = clamp(d + 1.0, 1, 10)
+        newS = Math.max(0.3, s * 0.5)
+        dueMs = now + 10 * 60 * 1000 // 10 min
+        w.fsrsLapses = (w.fsrsLapses || 0) + 1
+        w.reviewStatus = 'learning'
+        break
+      case 'hard':
+        newD = clamp(d + 0.5, 1, 10)
+        newS = Math.max(0.4, s * 1.2)
+        {
+          const days = Math.max(0.5, newS)
+          dueMs = now + days * 24 * 60 * 60 * 1000
+        }
+        w.reviewStatus = 'learning'
+        break
+      case 'good':
+        newD = clamp(d - 0.15, 1, 10)
+        newS = Math.max(0.5, s * 2.0)
+        {
+          const days = Math.max(1, newS)
+          dueMs = now + days * 24 * 60 * 60 * 1000
+        }
+        w.reviewStatus = newS >= 7 ? 'mastered' : 'learning'
+        break
+      case 'easy':
+        newD = clamp(d - 0.3, 1, 10)
+        newS = Math.max(0.6, s * 2.5)
+        {
+          const days = Math.max(2, newS * 1.2)
+          dueMs = now + days * 24 * 60 * 60 * 1000
+        }
+        w.reviewStatus = newS >= 7 ? 'mastered' : 'learning'
+        break
+    }
+    
+    w.fsrsDifficulty = newD
+    w.fsrsStability = newS
+    w.fsrsLastReviewedAt = now
+    w.fsrsReps = (w.fsrsReps || 0) + 1
+    w.reviewDueDate = dueMs
+    
+    dbManager.updateWord(w)
+    win?.webContents.send('db-updated')
+  } else {
+    // 回退到JSON操作
+    const db = readDB()
+    const idx = db.findIndex(w => w.id === id)
+    if (idx < 0) return
+    const now = Date.now()
+    const w = ensureFsrsDefaults(db[idx])
+    const d = w.fsrsDifficulty as number
+    const s = w.fsrsStability as number
+    let newD = d
+    let newS = s
+    let dueMs = now + 24 * 60 * 60 * 1000
+    
+    switch (grade) {
+      case 'again':
+        newD = clamp(d + 1.0, 1, 10)
+        newS = Math.max(0.3, s * 0.5)
+        dueMs = now + 10 * 60 * 1000
+        w.fsrsLapses = (w.fsrsLapses || 0) + 1
+        w.reviewStatus = 'learning'
+        break
+      case 'hard':
+        newD = clamp(d + 0.5, 1, 10)
+        newS = Math.max(0.4, s * 1.2)
+        {
+          const days = Math.max(0.5, newS)
+          dueMs = now + days * 24 * 60 * 60 * 1000
+        }
+        w.reviewStatus = 'learning'
+        break
+      case 'good':
+        newD = clamp(d - 0.15, 1, 10)
+        newS = Math.max(0.5, s * 2.0)
+        {
+          const days = Math.max(1, newS)
+          dueMs = now + days * 24 * 60 * 60 * 1000
+        }
+        w.reviewStatus = newS >= 7 ? 'mastered' : 'learning'
+        break
+      case 'easy':
+        newD = clamp(d - 0.3, 1, 10)
+        newS = Math.max(0.6, s * 2.5)
+        {
+          const days = Math.max(2, newS * 1.2)
+          dueMs = now + days * 24 * 60 * 60 * 1000
+        }
+        w.reviewStatus = newS >= 7 ? 'mastered' : 'learning'
+        break
+    }
+    
+    w.fsrsDifficulty = newD
+    w.fsrsStability = newS
+    w.fsrsLastReviewedAt = now
+    w.fsrsReps = (w.fsrsReps || 0) + 1
+    w.reviewDueDate = dueMs
+    db[idx] = w
+    writeDB(db)
   }
-  w.fsrsDifficulty = newD
-  w.fsrsStability = newS
-  w.fsrsLastReviewedAt = now
-  w.fsrsReps = (w.fsrsReps || 0) + 1
-  w.reviewDueDate = dueMs
-  db[idx] = w
-  writeDB(db)
+}
+
+// 更新数据库操作函数以使用SQLite
+function listWords(): StoredWord[] {
+  if (dbManager) {
+    return dbManager.getAllWords()
+  }
+  return readDB()
+}
+
+function listDeletedWords(): StoredWord[] {
+  if (dbManager) {
+    return dbManager.getDeletedWords()
+  }
+  return readDB().filter(w => w.deletedAt)
+}
+
+function deleteWord(id: string): { ok: boolean; error?: string } {
+  try {
+    if (dbManager) {
+      const success = dbManager.deleteWord(id)
+      if (success) {
+        win?.webContents.send('db-updated')
+        return { ok: true }
+      }
+      return { ok: false, error: '词汇不存在或已删除' }
+    }
+    // 回退到JSON操作
+    const db = readDB()
+    const idx = db.findIndex(w => w.id === id)
+    if (idx === -1) return { ok: false, error: '词汇不存在' }
+    db[idx].deletedAt = Date.now()
+    writeDB(db)
+    win?.webContents.send('db-updated')
+    return { ok: true }
+  } catch (error: any) {
+    return { ok: false, error: error.message }
+  }
+}
+
+function updateWord(word: StoredWord): { ok: boolean; error?: string } {
+  try {
+    if (dbManager) {
+      const success = dbManager.updateWord(word)
+      if (success) {
+        win?.webContents.send('db-updated')
+        return { ok: true }
+      }
+      return { ok: false, error: '更新失败' }
+    }
+    // 回退到JSON操作
+    const db = readDB()
+    const idx = db.findIndex(w => w.id === word.id)
+    if (idx === -1) return { ok: false, error: '词汇不存在' }
+    db[idx] = word
+    writeDB(db)
+    win?.webContents.send('db-updated')
+    return { ok: true }
+  } catch (error: any) {
+    return { ok: false, error: error.message }
+  }
+}
+
+function restoreWord(id: string): { ok: boolean; error?: string } {
+  try {
+    if (dbManager) {
+      const success = dbManager.restoreWord(id)
+      if (success) {
+        win?.webContents.send('db-updated')
+        return { ok: true }
+      }
+      return { ok: false, error: '词汇不存在或未删除' }
+    }
+    // 回退到JSON操作
+    const db = readDB()
+    const idx = db.findIndex(w => w.id === id && w.deletedAt)
+    if (idx === -1) return { ok: false, error: '词汇不存在或未删除' }
+    delete db[idx].deletedAt
+    writeDB(db)
+    win?.webContents.send('db-updated')
+    return { ok: true }
+  } catch (error: any) {
+    return { ok: false, error: error.message }
+  }
+}
+
+function bulkUpdate(ids: string[], changes: Partial<StoredWord>): number {
+  try {
+    if (dbManager) {
+      const changed = dbManager.bulkUpdateWords(ids, changes)
+      if (changed > 0) {
+        win?.webContents.send('db-updated')
+      }
+      return changed
+    }
+    // 回退到JSON操作
+    const db = readDB()
+    let changed = 0
+    for (const id of ids) {
+      const idx = db.findIndex(w => w.id === id)
+      if (idx !== -1) {
+        Object.assign(db[idx], changes)
+        changed++
+      }
+    }
+    if (changed > 0) {
+      writeDB(db)
+      win?.webContents.send('db-updated')
+    }
+    return changed
+  } catch (error) {
+    console.error('批量更新失败:', error)
+    return 0
+  }
+}
+
+function bulkDelete(ids: string[]): number {
+  try {
+    if (dbManager) {
+      // 使用优化的批量删除方法
+      const changed = dbManager.bulkDeleteWords(ids)
+      if (changed > 0) {
+        win?.webContents.send('db-updated')
+      }
+      return changed
+    }
+    // 回退到JSON操作
+    const db = readDB()
+    const now = Date.now()
+    let changed = 0
+    for (const id of ids) {
+      const idx = db.findIndex(w => w.id === id && !w.deletedAt)
+      if (idx !== -1) {
+        db[idx].deletedAt = now
+        changed++
+      }
+    }
+    if (changed > 0) {
+      writeDB(db)
+      win?.webContents.send('db-updated')
+    }
+    return changed
+  } catch (error) {
+    console.error('批量删除失败:', error)
+    return 0
+  }
+}
+
+function bulkRestore(ids: string[]): number {
+  try {
+    if (dbManager) {
+      // 使用优化的批量恢复方法
+      const changed = dbManager.bulkRestoreWords(ids)
+      if (changed > 0) {
+        win?.webContents.send('db-updated')
+      }
+      return changed
+    }
+    // 回退到JSON操作
+    const db = readDB()
+    let changed = 0
+    for (const id of ids) {
+      const idx = db.findIndex(w => w.id === id && w.deletedAt)
+      if (idx !== -1) {
+        delete db[idx].deletedAt
+        changed++
+      }
+    }
+    if (changed > 0) {
+      writeDB(db)
+      win?.webContents.send('db-updated')
+    }
+    return changed
+  } catch (error) {
+    console.error('批量恢复失败:', error)
+    return 0
+  }
 }
 
 // IPC
@@ -1199,21 +1412,35 @@ ipcMain.handle('db:list', () => listWords())
 ipcMain.handle('db:deleted:list', () => listDeletedWords())
 ipcMain.handle('db:delete', (_e, id: string) => deleteWord(id))
 ipcMain.handle('db:update', (_e, w: StoredWord) => updateWord(w))
-ipcMain.handle('db:restore', (_e, id: string) => { restoreWord(id); return { ok: true } })
+ipcMain.handle('db:restore', (_e, id: string) => restoreWord(id))
 ipcMain.handle('db:bulkUpdate', (_e, ids: string[], changes: Partial<StoredWord>) => ({ ok: true, changed: bulkUpdate(ids, changes) }))
 ipcMain.handle('db:bulkDelete', (_e, ids: string[]) => ({ ok: true, changed: bulkDelete(ids) }))
 ipcMain.handle('db:bulkRestore', (_e, ids: string[]) => ({ ok: true, changed: bulkRestore(ids) }))
 ipcMain.handle('review:due', () => {
   const now = Date.now()
-  const due = listWords().filter(w => w.reviewDueDate !== null && (w.reviewDueDate as number) <= now)
-  // Sort by estimated retrievability ascending (lower first)
-  const withR = due.map(w => {
-    const ww = ensureFsrsDefaults(w)
-    const r = computeRetrievability(now, ww.fsrsLastReviewedAt, ww.fsrsStability)
-    return { w: ww, r }
-  })
-  withR.sort((a, b) => a.r - b.r)
-  return withR.map(x => x.w)
+  
+  if (dbManager) {
+    // 使用SQLite数据库
+    const due = dbManager.getDueWords(now)
+    // Sort by estimated retrievability ascending (lower first)
+    const withR = due.map(w => {
+      const ww = ensureFsrsDefaults(w)
+      const r = computeRetrievability(now, ww.fsrsLastReviewedAt, ww.fsrsStability)
+      return { w: ww, r }
+    })
+    withR.sort((a, b) => a.r - b.r)
+    return withR.map(x => x.w)
+  } else {
+    // 回退到JSON操作
+    const due = listWords().filter(w => w.reviewDueDate !== null && (w.reviewDueDate as number) <= now)
+    const withR = due.map(w => {
+      const ww = ensureFsrsDefaults(w)
+      const r = computeRetrievability(now, ww.fsrsLastReviewedAt, ww.fsrsStability)
+      return { w: ww, r }
+    })
+    withR.sort((a, b) => a.r - b.r)
+    return withR.map(x => x.w)
+  }
 })
 ipcMain.handle('review:apply', (_e, id: string, grade: ReviewGrade) => applyReviewResult(id, grade))
 ipcMain.handle('import:fromClipboard', () => importAIResultFromText(clipboard.readText()))
@@ -1233,7 +1460,7 @@ ipcMain.handle('basket:add', (_e, term: string) => {
 // 导入/导出与备份
 ipcMain.handle('db:export', async (_e, format: 'json' | 'csv' = 'json') => {
   try {
-    const data = listWords()
+    const data = dbManager ? dbManager.getAllWords() : listWords()
     const ts = new Date()
     const y = String(ts.getFullYear())
     const m = String(ts.getMonth() + 1).padStart(2, '0')
@@ -1323,30 +1550,61 @@ ipcMain.handle('db:import', async () => {
       })).filter(x => x.term && x.definition && x.phonetic && x.example)
     }
     // 合并入库（按 term 去重，忽略大小写）
-    const db = readDB()
-    const exist = new Set(db.map(w => w.term.trim().toLowerCase()))
     const now = Date.now()
     let added = 0
-    for (const it of items) {
-      const key = (it.term || '').trim().toLowerCase()
-      if (!key || exist.has(key)) continue
-      db.push({
-        id: `${now}-${Math.random().toString(36).slice(2,8)}`,
-        term: it.term,
-        definition: it.definition,
-        phonetic: it.phonetic,
-        example: it.example,
-        domain: it.domain,
-        addedAt: now,
-        reviewStatus: 'new',
-        reviewDueDate: now,
-        analysis: ''
-      })
-      exist.add(key)
-      added++
+    
+    if (dbManager) {
+      // 使用SQLite数据库
+      const existingWords = dbManager.getAllWords()
+      const exist = new Set(existingWords.map(w => w.term.trim().toLowerCase()))
+      
+      for (const it of items) {
+        const key = (it.term || '').trim().toLowerCase()
+        if (!key || exist.has(key)) continue
+        
+        const wordData = {
+          term: it.term,
+          definition: it.definition,
+          phonetic: it.phonetic,
+          example: it.example,
+          domain: it.domain,
+          addedAt: now,
+          reviewStatus: 'new' as const,
+          reviewDueDate: now,
+          analysis: ''
+        }
+        
+        dbManager.addWord(wordData)
+        exist.add(key)
+        added++
+      }
+      win?.webContents.send('db-updated')
+    } else {
+      // 回退到JSON操作
+      const db = readDB()
+      const exist = new Set(db.map(w => w.term.trim().toLowerCase()))
+      
+      for (const it of items) {
+        const key = (it.term || '').trim().toLowerCase()
+        if (!key || exist.has(key)) continue
+        db.push({
+          id: `${now}-${Math.random().toString(36).slice(2,8)}`,
+          term: it.term,
+          definition: it.definition,
+          phonetic: it.phonetic,
+          example: it.example,
+          domain: it.domain,
+          addedAt: now,
+          reviewStatus: 'new',
+          reviewDueDate: now,
+          analysis: ''
+        })
+        exist.add(key)
+        added++
+      }
+      writeDB(db)
+      win?.webContents.send('db-updated')
     }
-    writeDB(db)
-    win?.webContents.send('db-updated')
     return { ok: true, added, total: items.length }
   } catch (err: any) {
     return { ok: false, error: String(err?.message || err) }
@@ -1497,19 +1755,40 @@ ipcMain.handle('tts:volc:query', async (_e, text: string) => {
 function resetAllWords() {
   try {
     const now = Date.now()
-    const db = readDB()
-    for (const w of db) {
-      w.reviewStatus = 'new'
-      w.reviewDueDate = now
-      w.fsrsDifficulty = 5
-      w.fsrsStability = 0.5
-      w.fsrsLastReviewedAt = now
-      w.fsrsReps = 0
-      w.fsrsLapses = 0
+    
+    if (dbManager) {
+      // 使用SQLite数据库
+      const words = dbManager.getAllWords()
+      const resetChanges = {
+        reviewStatus: 'new' as const,
+        reviewDueDate: now,
+        fsrsDifficulty: 5,
+        fsrsStability: 0.5,
+        fsrsLastReviewedAt: now,
+        fsrsReps: 0,
+        fsrsLapses: 0
+      }
+      
+      const ids = words.map(w => w.id)
+      const changed = dbManager.bulkUpdateWords(ids, resetChanges)
+      win?.webContents.send('db-updated')
+      return { ok: true, count: changed }
+    } else {
+      // 回退到JSON操作
+      const db = readDB()
+      for (const w of db) {
+        w.reviewStatus = 'new'
+        w.reviewDueDate = now
+        w.fsrsDifficulty = 5
+        w.fsrsStability = 0.5
+        w.fsrsLastReviewedAt = now
+        w.fsrsReps = 0
+        w.fsrsLapses = 0
+      }
+      writeDB(db)
+      win?.webContents.send('db-updated')
+      return { ok: true, count: db.length }
     }
-    writeDB(db)
-    win?.webContents.send('db-updated')
-    return { ok: true, count: db.length }
   } catch (err: any) {
     return { ok: false, error: String(err?.message || err) }
   }
@@ -2069,6 +2348,8 @@ app.on('before-quit', () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     isAppQuitting = true
+    // 关闭数据库连接
+    closeDatabaseManager()
     app.quit()
     win = null
   }
@@ -2082,21 +2363,15 @@ app.on('activate', () => {
   }
 })
 
-// 添加命令行参数以解决Windows缓存问题，同时保持性能
-if (process.platform === 'win32') {
-  // 仅禁用有问题的GPU功能，保留基本GPU加速
-  app.commandLine.appendSwitch('--disable-gpu-sandbox')
-  app.commandLine.appendSwitch('--disable-features', 'VizDisplayCompositor')
-  // 禁用缓存相关功能以避免权限问题
-  app.commandLine.appendSwitch('--disk-cache-size', '0')
-  app.commandLine.appendSwitch('--media-cache-size', '0')
-}
-
 app.whenReady().then(() => {
   // Required for Windows notifications
   if (process.platform === 'win32') {
     app.setAppUserModelId('FlowLearn')
   }
+  
+  // 初始化数据库
+  initializeDatabase()
+  
   createWindow()
   updateTrayMenu = createTray()
   startClipboardWatcher()

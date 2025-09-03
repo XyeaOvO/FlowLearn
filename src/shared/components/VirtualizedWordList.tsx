@@ -69,7 +69,6 @@ export default function VirtualizedWordList({
     
     return (
       <div
-        key={word.id}
         className={`word-item ${
           isCurrentSelected ? 'selected' : ''
         } ${
@@ -171,28 +170,15 @@ export default function VirtualizedWordList({
             right: 0
           }}
         >
-          {visibleItems.map((word) => {
-            return renderFunction(word)
-          })}
+          {visibleItems.map((word) => (
+            <React.Fragment key={word.id}>
+              {renderFunction(word)}
+            </React.Fragment>
+          ))}
         </div>
       </div>
       
-      {/* 性能统计信息（开发模式） */}
-      {process.env.NODE_ENV === 'development' && (
-        <div style={{
-          position: 'absolute',
-          top: 4,
-          right: 4,
-          background: 'rgba(0,0,0,0.7)',
-          color: 'white',
-          padding: '2px 6px',
-          fontSize: 10,
-          borderRadius: 3,
-          pointerEvents: 'none'
-        }}>
-          显示 {visibleRange.startIndex + 1}-{Math.min(visibleRange.endIndex, words.length)} / {words.length}
-        </div>
-      )}
+      {/* 性能统计信息（开发模式） - 已移除以避免滚动时位置问题 */}
     </div>
   )
 }

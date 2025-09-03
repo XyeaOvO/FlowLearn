@@ -11,14 +11,14 @@ export default function AIProcessingWindow({ isOpen, onClose }: AIProcessingWind
   const { status, cancelProcessing } = useAIProcessingStatus()
   const { streamContent, setStreamContent, streamContentRef } = useStreamContent(isOpen)
 
-  // 窗口打开时清空流式内容
+
   useEffect(() => {
     if (isOpen) {
       setStreamContent('')
     }
   }, [isOpen, setStreamContent])
 
-  // 如果处理完成，自动关闭窗口
+
   useEffect(() => {
     if (isOpen && !status.isProcessing && status.currentStep === 'completed') {
       setTimeout(() => {

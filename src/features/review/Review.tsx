@@ -18,7 +18,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
   const load = async () => {
     setIsLoading(true)
     const due = await reviewDue() as Word[]
-    // 确保所有数据都准备好后再更新状态
+
     await new Promise(resolve => setTimeout(resolve, 100))
     setQueue(due)
     setCurrent(due[0] ?? null)
@@ -49,7 +49,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
     next()
   }
 
-  // Auto speak on card show (必须在所有 return 之前，确保 Hooks 次序稳定)
+
   useEffect(() => {
     if (current && reviewSettings?.ttsEnabled && reviewSettings?.ttsAutoOnSelect) {
       try {
@@ -83,8 +83,8 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
         s.speak(u)
         }
       } catch {
-      // Failed to load due words
-    }
+        // TTS播放失败，忽略错误
+      }
     }
   }, [current, reviewSettings])
 
@@ -177,7 +177,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
       s.cancel()
       s.speak(u)
     } catch {
-        // Failed to apply review result
+        // TTS播放失败，忽略错误
       }
   }
 

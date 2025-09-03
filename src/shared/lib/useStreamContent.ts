@@ -10,16 +10,16 @@ export function useStreamContent(isActive: boolean = true) {
   useEffect(() => {
     if (!isActive) return
 
-    const handleStreamContent = (...args: unknown[]) => {
+    const handleStreamContent = (...eventArguments: unknown[]) => {
       // 在Electron IPC中，第一个参数通常是事件对象，第二个参数是实际数据
       let content: unknown = null
       
-      if (args.length >= 2) {
+      if (eventArguments.length >= 2) {
         // 如果有多个参数，第二个参数通常是数据
-        content = args[1]
-      } else if (args.length === 1) {
+        content = eventArguments[1]
+      } else if (eventArguments.length === 1) {
         // 如果只有一个参数，可能是数据本身
-        content = args[0]
+        content = eventArguments[0]
       }
       
       // 确保content是字符串
@@ -45,7 +45,7 @@ export function useStreamContent(isActive: boolean = true) {
             const stringContent = JSON.stringify(content)
             setStreamContent(stringContent)
           } catch (e) {
-            console.error('无法转换对象为字符串:', e)
+            // JSON转换失败，忽略错误
           }
         }
       }

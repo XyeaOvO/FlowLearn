@@ -87,7 +87,7 @@ export function useOptimizedFilter(words: Word[], filter: VocabFilter) {
         if (compiledRegex) {
           return compiledRegex.test(fieldsText)
         } else if (queryLower) {
-          return fields.some(val => (val || '').toLowerCase().includes(queryLower))
+          return fields.some(fieldValue => (fieldValue || '').toLowerCase().includes(queryLower))
         }
       }
 

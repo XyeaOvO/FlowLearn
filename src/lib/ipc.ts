@@ -7,7 +7,6 @@ export async function ipcInvoke<T = unknown>(channel: string, ...args: unknown[]
   }
   
   // 在开发环境中返回模拟数据
-  console.warn(`IPC call to ${channel} not available in browser environment`)
   
   // 为不同的channel返回适当的模拟数据
   if (channel === 'db:list' || channel === 'db:deleted:list') {
@@ -70,7 +69,7 @@ export const exportDB = (format: 'json' | 'csv') => ipcInvoke('db:export', forma
 export const importDB = () => ipcInvoke<ImportDBResult>('db:import')
 export const backupNow = () => ipcInvoke<BackupNowResult>('db:backup:now')
 export const backupList = () => ipcInvoke<BackupListResult>('db:backup:list')
-export const backupRestore = (p?: string) => ipcInvoke<BackupRestoreResult>('db:backup:restore', p)
+export const backupRestore = (backupPath?: string) => ipcInvoke<BackupRestoreResult>('db:backup:restore', backupPath)
 export const backupOpenDir = () => ipcInvoke('db:backup:openDir')
 export const resetAll = () => ipcInvoke<ResetAllResult>('db:resetAll')
 

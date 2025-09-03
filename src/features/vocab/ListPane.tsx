@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { Word } from '../../../shared/types'
 import { type VocabFilter } from './filters'
 import { useTranslation } from 'react-i18next'
 import { useOptimizedFilter } from '../../shared/lib/useOptimizedFilter'
+import VirtualizedWordList from '../../shared/components/VirtualizedWordList'
 
 export default function ListPane({
   words,
@@ -48,12 +49,14 @@ export default function ListPane({
   onBulkUpdateStatus: (ids: string[], status: Word['reviewStatus']) => void
   width?: number
 }) {
-  // 使用优化的过滤Hook
+
    const { filteredWords: filtered } = useOptimizedFilter(words, filter)
   const { t } = useTranslation()
   const [bulkDomain, setBulkDomain] = useState('')
   const [bulkStatus, setBulkStatus] = useState<Word['reviewStatus']>('learning')
   const [showFilters, setShowFilters] = useState(false)
+  const listContentRef = useRef<HTMLDivElement>(null)
+  const [containerHeight, setContainerHeight] = useState(400)
 
   const toggleId = (id: string) => {
     if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(x => x !== id))
@@ -65,6 +68,20 @@ export default function ListPane({
   const checkAll = (checked: boolean) => {
     setSelectedIds(checked ? allIds : [])
   }
+
+  useEffect(() => {
+    const updateHeight = () => {
+      if (listContentRef.current) {
+        const rect = listContentRef.current.getBoundingClientRect()
+        const availableHeight = rect.height - 32 // 减去padding
+        setContainerHeight(Math.max(200, availableHeight))
+      }
+    }
+
+    updateHeight()
+    window.addEventListener('resize', updateHeight)
+    return () => window.removeEventListener('resize', updateHeight)
+  }, [showFilters, selectionMode, anyChecked])
 
   return (
     <div className="list-pane" style={width ? { width } : undefined}>
@@ -311,30 +328,55 @@ export default function ListPane({
           )}
         </div>
       )}
-      <div className="list-content">
-        {filtered.length === 0 && (
+      <div className="list-content" ref={listContentRef}>
+        {filtered.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📚</div>
             <div className="empty-state-title">{t('list.emptyTitle')}</div>
             <div className="empty-state-description">{t('list.emptyDesc')}</div>
           </div>
+        ) : (
+          <VirtualizedWordList
+            words={filtered}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            containerHeight={containerHeight} // 可以根据需要调整高度
+            selectionMode={selectionMode}
+            selectedIds={selectedIds}
+            onToggleSelection={toggleId}
+            renderItem={(word) => (
+              <div 
+                className={`list-item ${selectionMode && selectedIds.includes(word.id) ? 'active' : (selectedId === word.id ? 'active' : '')}`}
+                onClick={() => {
+                  if (selectionMode) {
+                    toggleId(word.id)
+                  } else {
+                    onSelect(word)
+                  }
+                }}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="list-item-header">
+                  <div className="title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {selectionMode && (
+                      <input 
+                        type="checkbox" 
+                        checked={selectedIds.includes(word.id)} 
+                        onChange={() => toggleId(word.id)} 
+                        onClick={e => { e.stopPropagation(); }} 
+                      />
+                    )}
+                    <span>{word.term}</span>
+                  </div>
+                  <div className={`badge ${word.reviewStatus === 'new' ? 'badge-info' : word.reviewStatus === 'learning' ? 'badge-warning' : 'badge-success'}`}>
+                    {word.reviewStatus === 'new' ? t('status.new') : word.reviewStatus === 'learning' ? t('status.learning') : t('status.mastered')}
+                  </div>
+                </div>
+                <div className="meta">{t('detail.addedAt')} {formatSimpleDate(word.addedAt)}</div>
+              </div>
+            )}
+          />
         )}
-        {filtered.map(w => (
-          <div key={w.id} onClick={() => { if (selectionMode) toggleId(w.id); else onSelect(w) }} className={`list-item ${selectionMode && selectedIds.includes(w.id) ? 'active' : (selectedId === w.id ? 'active' : '')}`}>
-            <div className="list-item-header">
-              <div className="title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {selectionMode && (
-                  <input type="checkbox" checked={selectedIds.includes(w.id)} onChange={() => toggleId(w.id)} onClick={e => { e.stopPropagation(); }} />
-                )}
-                <span>{w.term}</span>
-              </div>
-              <div className={`badge ${w.reviewStatus === 'new' ? 'badge-info' : w.reviewStatus === 'learning' ? 'badge-warning' : 'badge-success'}`}>
-                {w.reviewStatus === 'new' ? t('status.new') : w.reviewStatus === 'learning' ? t('status.learning') : t('status.mastered')}
-              </div>
-            </div>
-            <div className="meta">{t('detail.addedAt')} {formatSimpleDate(w.addedAt)}</div>
-          </div>
-        ))}
       </div>
     </div>
   )

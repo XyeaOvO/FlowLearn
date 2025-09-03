@@ -9,9 +9,7 @@ export default function AIProcessingStatus({ onStatusChange }: AIProcessingStatu
   const { status, cancelProcessing } = useAIProcessingStatus(onStatusChange)
   const { streamContent, streamContentRef } = useStreamContent(true)
 
-  // 流式内容处理逻辑已移至useStreamContent hook中
 
-  // 不再显示固定状态栏，改为使用独立窗口
   return null
 
   const elapsed = Math.floor((Date.now() - status.startTime) / 1000)

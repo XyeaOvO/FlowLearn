@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-// moved usage to DetailPane
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import './App.css'
 import { useTranslation } from 'react-i18next'
 import type { Word, Settings } from '@shared/types'
@@ -12,87 +11,33 @@ import AddWordModal from '@features/vocab/AddWordModal'
 import AIProcessingStatus from '@features/vocab/AIProcessingStatus'
 import WordConfirmationModal from '@features/vocab/WordConfirmationModal'
 import AIProcessingWindow from '@features/vocab/AIProcessingWindow'
-import { useMemoryOptimization, useThrottledState } from './shared/lib/useMemoryOptimization'
-
-// Types moved to shared/types
-
-// dates moved to src/lib/date
+import { useMemoryOptimization } from './shared/lib/useMemoryOptimization'
+import { useTTS } from './shared/hooks/useTTS'
+import { useFilters } from './shared/hooks/useFilters'
+import { useMultiSelect } from './shared/hooks/useMultiSelect'
+import { useResizable } from './shared/hooks/useResizable'
 
 function App() {
   const { t, i18n } = useTranslation()
   const [words, setWords] = useState<Word[]>([])
   const [selected, setSelected] = useState<Word | null>(null)
   
-  // 内存优化
-   const { getMemoryUsage, clearCache } = useMemoryOptimization()
+  const { getMemoryUsage, clearCache } = useMemoryOptimization()
   const [settings, setSettings] = useState<Settings | null>(null)
   const [basketCount, setBasketCount] = useState<number>(0)
   const [tab, setTab] = useState<'list' | 'review' | 'settings'>('list')
-  const [search, setThrottledSearch] = useThrottledState('', 200)
-    
-    // 兼容原有的setSearch函数
-    const setSearch = setThrottledSearch
-  const [statusFilter, setStatusFilter] = useState<'all' | Word['reviewStatus']>('all')
-  const [filterDateFrom, setFilterDateFrom] = useState<string>('')
-  const [filterDateTo, setFilterDateTo] = useState<string>('')
-  const [domainFilter, setDomainFilter] = useState<string>('all')
-  const [requireExample, setRequireExample] = useState<boolean>(false)
-  const [requirePhonetic, setRequirePhonetic] = useState<boolean>(false)
-  const [useRegex, setUseRegex] = useState<boolean>(false)
-  const [regexPattern, setRegexPattern] = useState<string>('')
-  const [showDeleted, setShowDeleted] = useState<boolean>(false)
-  const [multiSelectMode, setMultiSelectMode] = useState<boolean>(false)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [listWidth, setListWidth] = useState<number>(() => {
-    try { const v = Number(localStorage.getItem('listPaneWidth') || 380); if (isFinite(v)) return v } catch (_: unknown) {
-    // Failed to read from localStorage
-  }
-    return 380
-  })
-  const listWidthRef = useRef<number>(listWidth)
-  useEffect(() => { listWidthRef.current = listWidth }, [listWidth])
+  const { filterState, filterActions } = useFilters()
+  const { multiSelectMode, selectedIds, setMultiSelectMode, setSelectedIds, clearSelection } = useMultiSelect()
+  const { width: listWidth, onStartResize } = useResizable(380, 'listPaneWidth')
   const [showAddWordModal, setShowAddWordModal] = useState(false)
   const [showWordConfirmationModal, setShowWordConfirmationModal] = useState(false)
   const [showAIProcessingWindow, setShowAIProcessingWindow] = useState(false)
   const [pendingWords, setPendingWords] = useState<string[]>([])
-  const speak = (text: string) => {
-    try {
-      if (settings?.ttsProvider === 'volcengine') {
-        (async () => {
-          const res = await window.api.invoke('tts:volc:query', text) as { ok: boolean; base64?: string; encoding?: string; error?: string }
-          if (!res.ok || !res.base64) return
-          const bstr = atob(res.base64)
-          const len = bstr.length
-          const u8 = new Uint8Array(len)
-          for (let i = 0; i < len; i++) u8[i] = bstr.charCodeAt(i)
-          const mime = res.encoding === 'mp3' ? 'audio/mpeg' : (res.encoding === 'ogg_opus' ? 'audio/ogg' : 'audio/wav')
-          const blob = new Blob([u8], { type: mime })
-          const url = URL.createObjectURL(blob)
-          const audio = new Audio(url)
-          audio.play().finally(() => URL.revokeObjectURL(url))
-        })()
-        return
-      }
-      const s = window.speechSynthesis
-      if (!s) return
-      const u = new SpeechSynthesisUtterance(text)
-      if (settings?.ttsLang) u.lang = settings.ttsLang
-      if (settings?.ttsRate) u.rate = settings.ttsRate
-      if (settings?.ttsPitch) u.pitch = settings.ttsPitch
-      if (settings?.ttsVoice) {
-        const voice = s.getVoices().find(v => v.name === settings.ttsVoice)
-        if (voice) u.voice = voice
-      }
-      s.cancel()
-      s.speak(u)
-    } catch (_: unknown) {
-      // Failed to load settings
-    }
-  }
+  const { speak } = useTTS(settings)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Word | null>(null)
 
-  // status labels moved to child components
+
 
   const refresh = useCallback(async () => {
     const [active, deleted] = await Promise.all([
@@ -100,7 +45,7 @@ function App() {
       dbDeletedList() as Promise<Word[]>,
     ])
     
-    // 确保active和deleted是数组
+
     const activeWords = Array.isArray(active) ? active : []
     const deletedWords = Array.isArray(deleted) ? deleted : []
     
@@ -126,12 +71,12 @@ function App() {
       refreshBasket()
     }
     
-    // 检查是否在Electron环境中
+
     if (typeof window !== 'undefined' && window.api && window.api.on) {
       window.api.on('db-updated', handler)
       window.api.on('basket-updated', handler)
       
-      // 监听AI处理相关事件
+  
       window.api.on('show-ai-processing-window', () => {
         setShowAIProcessingWindow(true)
       })
@@ -142,7 +87,7 @@ function App() {
         setShowWordConfirmationModal(true)
       })
       
-      // 监听快捷键切换页面事件
+  
       window.api.on('switch-to-settings', () => setTab('settings'))
       window.api.on('switch-to-review', () => setTab('review'))
       
@@ -158,11 +103,11 @@ function App() {
       }
     }
     
-    // 在浏览器环境中不执行任何操作
+    
     return () => {}
   }, [refresh, refreshSettings, refreshBasket])
   
-  // 内存清理
+  
   useEffect(() => {
     const interval = setInterval(() => {
       if (process.env.NODE_ENV === 'development') {
@@ -176,7 +121,7 @@ function App() {
     return () => clearInterval(interval)
   }, [getMemoryUsage, clearCache])
 
-  // Apply theme & locale when settings change
+
   useEffect(() => {
     if (!settings) return
     const root = document.documentElement
@@ -184,8 +129,8 @@ function App() {
     else root.setAttribute('data-theme', settings.theme)
     if (settings.locale) {
       try { i18n.changeLanguage(settings.locale) } catch {
-      // Failed to change language
-    }
+        // 忽略localStorage错误
+      }
     }
   }, [settings, i18n])
 
@@ -208,7 +153,7 @@ function App() {
     return Array.from(s).sort()
   }, [words])
 
-  // filtering moved to features/vocab/filters and applied in ListPane
+
 
   const dueWords = useMemo(() => words.filter(w => !((w as Word & { deletedAt?: number }).deletedAt) && w.reviewDueDate !== null && (w.reviewDueDate as number) <= Date.now()), [words])
   const reviewedToday = useMemo(() => {
@@ -216,36 +161,7 @@ function App() {
     return words.filter(w => !((w as Word & { deletedAt?: number }).deletedAt) && (w.fsrsLastReviewedAt || 0) >= d.getTime()).length
   }, [words])
 
-  const onStartResize = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startW = listWidth
-    const onMove = (ev: MouseEvent) => {
-      const dx = ev.clientX - startX
-      let next = startW + dx
-      const min = 280
-      const max = 600
-      if (next < min) next = min
-      if (next > max) next = max
-      setListWidth(next)
-      listWidthRef.current = next
-    }
-    const onUp = () => {
-      try { localStorage.setItem('listPaneWidth', String(listWidthRef.current)) } catch {
-        // Failed to save to localStorage
-      }
-      try { document.body.classList.remove('is-resizing') } catch {
-        // Failed to remove class
-      }
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    try { document.body.classList.add('is-resizing') } catch {
-        // Failed to add class
-      }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }
+
 
   return (
     <div className="layout">
@@ -416,39 +332,38 @@ function App() {
               words={words}
               selectedId={selected?.id || null}
               onSelect={setSelected}
-              filter={{
-                query: search,
-                status: statusFilter,
-                from: filterDateFrom,
-                to: filterDateTo,
-                domain: domainFilter,
-                requireExample,
-                requirePhonetic,
-                useRegex,
-                regex: regexPattern,
-                showDeleted,
-              }}
+              filter={filterState}
               domainOptions={domainOptions}
               ui={{
-                search, setSearch,
-                status: statusFilter, setStatus: (v) => setStatusFilter(v),
-                from: filterDateFrom, setFrom: setFilterDateFrom,
-                to: filterDateTo, setTo: setFilterDateTo,
-                domain: domainFilter, setDomain: setDomainFilter,
-                requireExample, setRequireExample,
-                requirePhonetic, setRequirePhonetic,
-                useRegex, setUseRegex,
-                regex: regexPattern, setRegex: setRegexPattern,
-                showDeleted, setShowDeleted: (b: boolean) => { setMultiSelectMode(false); setSelectedIds([]); setShowDeleted(b) },
+                search: filterState.query,
+                setSearch: filterActions.setSearch,
+                status: filterState.status,
+                setStatus: filterActions.setStatus,
+                from: filterState.from,
+                setFrom: filterActions.setFrom,
+                to: filterState.to,
+                setTo: filterActions.setTo,
+                domain: filterState.domain,
+                setDomain: filterActions.setDomain,
+                requireExample: filterState.requireExample,
+                setRequireExample: filterActions.setRequireExample,
+                requirePhonetic: filterState.requirePhonetic,
+                setRequirePhonetic: filterActions.setRequirePhonetic,
+                useRegex: filterState.useRegex,
+                setUseRegex: filterActions.setUseRegex,
+                regex: filterState.regex,
+                setRegex: filterActions.setRegex,
+                showDeleted: filterState.showDeleted,
+                setShowDeleted: (b: boolean) => { clearSelection(); filterActions.setShowDeleted(b) },
               }}
               selectionMode={multiSelectMode}
               setSelectionMode={setMultiSelectMode}
               selectedIds={selectedIds}
               setSelectedIds={setSelectedIds}
-              onBulkDelete={async (ids) => { await dbBulkDelete(ids); setSelectedIds([]); setMultiSelectMode(false); await refresh() }}
-              onBulkRestore={async (ids) => { await dbBulkRestore(ids); setSelectedIds([]); setMultiSelectMode(false); await refresh() }}
-              onBulkUpdateDomain={async (ids, domain) => { await dbBulkUpdate(ids, { domain }); setSelectedIds([]); setMultiSelectMode(false); await refresh() }}
-              onBulkUpdateStatus={async (ids, status) => { await dbBulkUpdate(ids, { reviewStatus: status }); setSelectedIds([]); setMultiSelectMode(false); await refresh() }}
+              onBulkDelete={async (ids) => { await dbBulkDelete(ids); clearSelection(); await refresh() }}
+              onBulkRestore={async (ids) => { await dbBulkRestore(ids); clearSelection(); await refresh() }}
+              onBulkUpdateDomain={async (ids, domain) => { await dbBulkUpdate(ids, { domain }); clearSelection(); await refresh() }}
+              onBulkUpdateStatus={async (ids, status) => { await dbBulkUpdate(ids, { reviewStatus: status }); clearSelection(); await refresh() }}
             />
             <div className="col-resizer" onMouseDown={onStartResize} title={t('filters.domainAll') as string} />
             <DetailPane 
@@ -495,7 +410,7 @@ function App() {
         words={pendingWords}
         onConfirm={async (confirmedWords) => {
           setShowWordConfirmationModal(false)
-          // 开始AI处理
+          
           await startAIProcessing(confirmedWords)
         }}
         onCancel={() => setShowWordConfirmationModal(false)}

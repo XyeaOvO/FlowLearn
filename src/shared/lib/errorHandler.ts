@@ -25,7 +25,7 @@ export async function safeAsync<T>(
   try {
     return await operation()
   } catch (error) {
-    console.error('Async operation failed:', getErrorMessage(error))
+    // 异步操作失败，返回fallback值
     return fallback
   }
 }
@@ -34,14 +34,13 @@ export async function safeAsync<T>(
  * 创建一个带有错误处理的异步函数包装器
  */
 export function withErrorHandling<T extends unknown[], R>(
-  fn: (...args: T) => Promise<R>,
-  errorMessage?: string
+  asyncFunction: (...parameters: T) => Promise<R>
 ) {
-  return async (...args: T): Promise<R | undefined> => {
+  return async (...parameters: T): Promise<R | undefined> => {
     try {
-      return await fn(...args)
+      return await asyncFunction(...parameters)
     } catch (error) {
-      console.error(errorMessage || 'Operation failed:', getErrorMessage(error))
+      // 操作失败，返回undefined
       return undefined
     }
   }
