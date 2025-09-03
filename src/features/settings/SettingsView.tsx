@@ -20,12 +20,11 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
   const dataRef = useRef<HTMLDivElement | null>(null)
   const [active, setActive] = useState<'basic' | 'filters' | 'ai' | 'tts' | 'data'>('basic')
   const loadBackups = async () => {
-    try {
-      const r: BackupListResult = await backupList()
+    const result = await safeAsync(() => backupList())
+    if (result) {
+      const r = result as BackupListResult
       if (r?.ok && Array.isArray(r.list)) setBackups(r.list)
-    } catch {
-    // Failed to test model
-  }
+    }
   }
   useEffect(() => {
     const load = () => {
@@ -673,9 +672,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
                }
              }}>{t('data.backupNow')}</button>
             <button className="btn" onClick={async () => {
-              try { await backupOpenDir() } catch {
-                   // Failed to open backup directory
-                 }
+               await safeAsync(() => backupOpenDir())
             }}>{t('data.openDir')}</button>
             <button className="btn" onClick={async () => {
                const result = await safeAsync(() => backupRestore())

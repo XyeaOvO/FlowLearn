@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react'
+import { useRef, useCallback, useState, useEffect } from 'react'
 import type { Word } from '../../../shared/types'
 
 /**
@@ -213,15 +213,15 @@ export function useThrottledState<T>(initialValue: T, delay: number = 300) {
 export function useLazyLoad<T>(loadFn: () => Promise<T>, dependencies: unknown[] = []) {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const loadedRef = useRef(false)
-  
+
   /**
-   * 执行数据加载
-   * @returns Promise<void>
+   * 执行加载操作
+   * 支持异步数据加载和错误处理
    */
   const load = useCallback(async () => {
-    if (loadedRef.current) return
+    if (loading) return
     
     setLoading(true)
     setError(null)
@@ -231,11 +231,22 @@ export function useLazyLoad<T>(loadFn: () => Promise<T>, dependencies: unknown[]
       setData(result)
       loadedRef.current = true
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('加载失败'))
+      const errorMessage = err instanceof Error ? err.message : '加载失败'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
-  }, [loadFn, ...dependencies])
+  }, [loadFn, loading])
+
+  // 当依赖变化时重置状态
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (loadedRef.current) {
+      setData(null)
+      setError(null)
+      loadedRef.current = false
+    }
+  }, dependencies)
   
   /**
    * 重置加载状态

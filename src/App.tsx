@@ -168,7 +168,6 @@ function App() {
       if (process.env.NODE_ENV === 'development') {
         const memUsage = getMemoryUsage()
         if (memUsage && memUsage.used > 100) { // 超过100MB时清理缓存
-          console.log('内存使用:', memUsage)
           clearCache()
         }
       }
