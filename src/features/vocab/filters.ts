@@ -22,7 +22,7 @@ export function filterWords(words: Word[], f: VocabFilter): Word[] {
   const fromTs = f.from ? new Date(f.from + 'T00:00:00').getTime() : null
   const toTs = f.to ? new Date(f.to + 'T23:59:59').getTime() : null
   return words.filter(w => {
-    const isDeleted = !!(w as any).deletedAt
+    const isDeleted = !!(w as Word & { deletedAt?: number }).deletedAt
     if (f.showDeleted) {
       if (!isDeleted) return false
     } else {

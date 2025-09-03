@@ -1,6 +1,6 @@
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import type { Word, Settings } from '../../../shared/types'
 import { toDateInputValue, formatDate } from '../../lib/date'
 import { useTranslation } from 'react-i18next'
@@ -29,11 +29,15 @@ export default function DetailPane({
   const { t } = useTranslation()
   
   // 当选中新词条时自动播放发音（如果启用了自动播放设置）
-  useEffect(() => {
+  const handleAutoSpeak = useCallback(() => {
     if (word && word.term && settings?.ttsEnabled && settings?.ttsAutoOnSelect) {
       speak(word.term)
     }
-  }, [word?.id, settings?.ttsEnabled, settings?.ttsAutoOnSelect]) // 监听word.id和TTS设置的变化，移除speak避免重复播放
+  }, [word, settings?.ttsEnabled, settings?.ttsAutoOnSelect, speak])
+
+  useEffect(() => {
+    handleAutoSpeak()
+  }, [handleAutoSpeak])
 
   if (!word) return (
     <div className="detail-pane">

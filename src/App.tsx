@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 // moved usage to DetailPane
 import './App.css'
 import { useTranslation } from 'react-i18next'
@@ -12,6 +12,7 @@ import AddWordModal from '@features/vocab/AddWordModal'
 import AIProcessingStatus from '@features/vocab/AIProcessingStatus'
 import WordConfirmationModal from '@features/vocab/WordConfirmationModal'
 import AIProcessingWindow from '@features/vocab/AIProcessingWindow'
+import { useMemoryOptimization, useThrottledState } from './shared/lib/useMemoryOptimization'
 
 // Types moved to shared/types
 
@@ -21,10 +22,16 @@ function App() {
   const { t, i18n } = useTranslation()
   const [words, setWords] = useState<Word[]>([])
   const [selected, setSelected] = useState<Word | null>(null)
+  
+  // 内存优化
+   const { getMemoryUsage, clearCache } = useMemoryOptimization()
   const [settings, setSettings] = useState<Settings | null>(null)
   const [basketCount, setBasketCount] = useState<number>(0)
   const [tab, setTab] = useState<'list' | 'review' | 'settings'>('list')
-  const [search, setSearch] = useState('')
+  const [search, setThrottledSearch] = useThrottledState('', 200)
+    
+    // 兼容原有的setSearch函数
+    const setSearch = setThrottledSearch
   const [statusFilter, setStatusFilter] = useState<'all' | Word['reviewStatus']>('all')
   const [filterDateFrom, setFilterDateFrom] = useState<string>('')
   const [filterDateTo, setFilterDateTo] = useState<string>('')
@@ -37,7 +44,9 @@ function App() {
   const [multiSelectMode, setMultiSelectMode] = useState<boolean>(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [listWidth, setListWidth] = useState<number>(() => {
-    try { const v = Number(localStorage.getItem('listPaneWidth') || 380); if (isFinite(v)) return v } catch {}
+    try { const v = Number(localStorage.getItem('listPaneWidth') || 380); if (isFinite(v)) return v } catch (_: unknown) {
+    // Failed to read from localStorage
+  }
     return 380
   })
   const listWidthRef = useRef<number>(listWidth)
@@ -49,7 +58,7 @@ function App() {
   const speak = (text: string) => {
     try {
       if (settings?.ttsProvider === 'volcengine') {
-        ;(async () => {
+        (async () => {
           const res = await window.api.invoke('tts:volc:query', text) as { ok: boolean; base64?: string; encoding?: string; error?: string }
           if (!res.ok || !res.base64) return
           const bstr = atob(res.base64)
@@ -76,30 +85,37 @@ function App() {
       }
       s.cancel()
       s.speak(u)
-    } catch {}
+    } catch (_: unknown) {
+      // Failed to load settings
+    }
   }
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Word | null>(null)
 
   // status labels moved to child components
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const [active, deleted] = await Promise.all([
       dbList() as Promise<Word[]>,
       dbDeletedList() as Promise<Word[]>,
     ])
-    setWords([...(active || []), ...(deleted || [])])
-  }
+    
+    // 确保active和deleted是数组
+    const activeWords = Array.isArray(active) ? active : []
+    const deletedWords = Array.isArray(deleted) ? deleted : []
+    
+    setWords([...activeWords, ...deletedWords])
+  }, [])
 
-  const refreshSettings = async () => {
+  const refreshSettings = useCallback(async () => {
     const s = await ipcGetSettings() as Settings
     setSettings(s)
-  }
+  }, [])
 
-  const refreshBasket = async () => {
+  const refreshBasket = useCallback(async () => {
     const basket = await getBasket() as Array<{term:string}>
     setBasketCount(basket.length)
-  }
+  }, [])
 
   useEffect(() => {
     refresh()
@@ -109,32 +125,57 @@ function App() {
       refresh()
       refreshBasket()
     }
-    window.api.on('db-updated', handler)
-    window.api.on('basket-updated', handler)
     
-    // 监听AI处理相关事件
-    window.api.on('show-ai-processing-window', () => {
-      setShowAIProcessingWindow(true)
-    })
-    
-    window.api.on('show-word-confirmation-modal', (_event: any, words: string[]) => {
-      setPendingWords(words)
-      setShowWordConfirmationModal(true)
-    })
-    
-    // 监听快捷键切换页面事件
-    window.api.on('switch-to-settings', () => setTab('settings'))
-    window.api.on('switch-to-review', () => setTab('review'))
-    
-    return () => {
-      window.api.off('db-updated', handler as any)
-      window.api.off('basket-updated', handler as any)
-      window.api.off('show-ai-processing-window', handler as any)
-      window.api.off('show-word-confirmation-modal', handler as any)
-      window.api.off('switch-to-settings', handler as any)
-      window.api.off('switch-to-review', handler as any)
+    // 检查是否在Electron环境中
+    if (typeof window !== 'undefined' && window.api && window.api.on) {
+      window.api.on('db-updated', handler)
+      window.api.on('basket-updated', handler)
+      
+      // 监听AI处理相关事件
+      window.api.on('show-ai-processing-window', () => {
+        setShowAIProcessingWindow(true)
+      })
+      
+      window.api.on('show-word-confirmation-modal', (...args: unknown[]) => {
+        const words = args[1] as string[]
+        setPendingWords(words)
+        setShowWordConfirmationModal(true)
+      })
+      
+      // 监听快捷键切换页面事件
+      window.api.on('switch-to-settings', () => setTab('settings'))
+      window.api.on('switch-to-review', () => setTab('review'))
+      
+      return () => {
+        if (window.api && window.api.off) {
+          window.api.off('db-updated', handler)
+          window.api.off('basket-updated', handler)
+          window.api.off('show-ai-processing-window', handler)
+          window.api.off('show-word-confirmation-modal', handler)
+          window.api.off('switch-to-settings', handler)
+          window.api.off('switch-to-review', handler)
+        }
+      }
     }
-  }, [])
+    
+    // 在浏览器环境中不执行任何操作
+    return () => {}
+  }, [refresh, refreshSettings, refreshBasket])
+  
+  // 内存清理
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (process.env.NODE_ENV === 'development') {
+        const memUsage = getMemoryUsage()
+        if (memUsage && memUsage.used > 100) { // 超过100MB时清理缓存
+          console.log('内存使用:', memUsage)
+          clearCache()
+        }
+      }
+    }, 30000) // 每30秒检查一次
+    
+    return () => clearInterval(interval)
+  }, [getMemoryUsage, clearCache])
 
   // Apply theme & locale when settings change
   useEffect(() => {
@@ -143,9 +184,11 @@ function App() {
     if (settings.theme === 'system' || !settings.theme) root.removeAttribute('data-theme')
     else root.setAttribute('data-theme', settings.theme)
     if (settings.locale) {
-      try { i18n.changeLanguage(settings.locale) } catch {}
+      try { i18n.changeLanguage(settings.locale) } catch {
+      // Failed to change language
     }
-  }, [settings?.theme, settings?.locale])
+    }
+  }, [settings, i18n])
 
   useEffect(() => {
     if (selected) {
@@ -160,7 +203,7 @@ function App() {
   const domainOptions = useMemo(() => {
     const s = new Set<string>()
     for (const w of words) {
-      if ((w as any).deletedAt) continue
+      if ((w as Word & { deletedAt?: number }).deletedAt) continue
       if (w.domain && w.domain.trim()) s.add(w.domain.trim())
     }
     return Array.from(s).sort()
@@ -168,10 +211,10 @@ function App() {
 
   // filtering moved to features/vocab/filters and applied in ListPane
 
-  const dueWords = useMemo(() => words.filter(w => !((w as any).deletedAt) && w.reviewDueDate !== null && (w.reviewDueDate as number) <= Date.now()), [words])
+  const dueWords = useMemo(() => words.filter(w => !((w as Word & { deletedAt?: number }).deletedAt) && w.reviewDueDate !== null && (w.reviewDueDate as number) <= Date.now()), [words])
   const reviewedToday = useMemo(() => {
     const d = new Date(); d.setHours(0,0,0,0)
-    return words.filter(w => !((w as any).deletedAt) && (w.fsrsLastReviewedAt || 0) >= d.getTime()).length
+    return words.filter(w => !((w as Word & { deletedAt?: number }).deletedAt) && (w.fsrsLastReviewedAt || 0) >= d.getTime()).length
   }, [words])
 
   const onStartResize = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -189,12 +232,18 @@ function App() {
       listWidthRef.current = next
     }
     const onUp = () => {
-      try { localStorage.setItem('listPaneWidth', String(listWidthRef.current)) } catch {}
-      try { document.body.classList.remove('is-resizing') } catch {}
+      try { localStorage.setItem('listPaneWidth', String(listWidthRef.current)) } catch {
+        // Failed to save to localStorage
+      }
+      try { document.body.classList.remove('is-resizing') } catch {
+        // Failed to remove class
+      }
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-    try { document.body.classList.add('is-resizing') } catch {}
+    try { document.body.classList.add('is-resizing') } catch {
+        // Failed to add class
+      }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
   }
@@ -224,7 +273,7 @@ function App() {
               <button 
                 className="btn" 
                 onClick={async () => {
-                  const count = await importFromClipboard()
+                  const count: number = await importFromClipboard()
                   if (count > 0) await refresh()
                 }}
                 style={{ flex: 1 }}
@@ -251,7 +300,7 @@ function App() {
                 <span style={{ fontSize: 16 }}>📚</span>
                   <span>{t('nav.vocab')}</span>
               </span>
-              <span className="nav-item-count">{words.filter(w => !(w as any).deletedAt).length}</span>
+              <span className="nav-item-count">{words.filter(w => !(w as Word & { deletedAt?: number }).deletedAt).length}</span>
             </button>
             <button 
               className={`nav-item ${tab === 'review' ? 'active' : ''}`}
@@ -285,7 +334,7 @@ function App() {
                 <div className="stat-content">
                   <div className="stat-label">{t('status.new')}</div>
                   <div className="stat-value new">
-                    {words.filter(w => !((w as any).deletedAt) && w.reviewStatus === 'new').length}
+                    {words.filter(w => !((w as Word & { deletedAt?: number }).deletedAt) && w.reviewStatus === 'new').length}
                   </div>
                 </div>
               </div>
@@ -294,7 +343,7 @@ function App() {
                 <div className="stat-content">
                   <div className="stat-label">{t('status.learning')}</div>
                   <div className="stat-value learning">
-                    {words.filter(w => !((w as any).deletedAt) && w.reviewStatus === 'learning').length}
+                    {words.filter(w => !((w as Word & { deletedAt?: number }).deletedAt) && w.reviewStatus === 'learning').length}
                   </div>
                 </div>
               </div>
@@ -303,7 +352,7 @@ function App() {
                 <div className="stat-content">
                   <div className="stat-label">{t('status.mastered')}</div>
                   <div className="stat-value mastered">
-                    {words.filter(w => !((w as any).deletedAt) && w.reviewStatus === 'mastered').length}
+                    {words.filter(w => !((w as Word & { deletedAt?: number }).deletedAt) && w.reviewStatus === 'mastered').length}
                   </div>
                 </div>
               </div>

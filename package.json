@@ -7,9 +7,13 @@
   "author": "Xyea <xyeaovo@gmail.com>",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "build": "tsc && vite build",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "preview": "vite preview",
+    "electron:dev": "electron .",
+    "electron:pack": "electron-builder",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@types/node-fetch": "^2.6.13",

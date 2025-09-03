@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import type { AIModelConfig } from '../../../shared/types'
+import type { AIModelConfig, AIModelTestResult } from '../../../shared/types'
 import { testAIModel } from '../../lib/ipc'
+import { getErrorMessage } from '../../shared/lib/errorHandler'
 
 interface AIModelConfigProps {
   model: AIModelConfig
@@ -29,7 +30,7 @@ export default function AIModelConfigComponent({
     setIsTesting(true)
     setTestResult(null)
     try {
-      const result = await testAIModel(localModel)
+      const result: AIModelTestResult = await testAIModel(localModel)
       setTestResult({
         success: result.success,
         message: result.message || (result.success ? '连接成功' : '连接失败')
@@ -37,10 +38,10 @@ export default function AIModelConfigComponent({
       if (result.success) {
         onUpdate({ ...localModel, lastTested: Date.now(), testResult: true })
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setTestResult({
         success: false,
-        message: error.message || '测试失败'
+        message: getErrorMessage(error) || '测试失败'
       })
     } finally {
       setIsTesting(false)
@@ -121,7 +122,7 @@ export default function AIModelConfigComponent({
             className="select" 
             value={localModel.type}
             onChange={(e) => {
-              const type = e.target.value as any
+              const type = e.target.value as AIModelConfig['type']
               const updated = { 
                 ...localModel, 
                 type,

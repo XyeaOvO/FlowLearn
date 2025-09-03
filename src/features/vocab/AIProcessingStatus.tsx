@@ -1,106 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
-import { getAIProcessingStatus, cancelAIProcessing } from '../../lib/ipc'
+import { useAIProcessingStatus } from '../../shared/lib/useAIProcessingStatus'
+import { useStreamContent } from '../../shared/lib/useStreamContent'
 
 interface AIProcessingStatusProps {
   onStatusChange?: (isProcessing: boolean) => void
 }
 
 export default function AIProcessingStatus({ onStatusChange }: AIProcessingStatusProps) {
-  const [status, setStatus] = useState({
-    isProcessing: false,
-    currentWords: [] as string[],
-    currentModelId: '',
-    startTime: 0,
-    streamOutput: [] as string[],
-    currentStep: '',
-    streamContent: ''
-  })
-  
-  const [streamContent, setStreamContent] = useState('')
-  const streamContentRef = useRef<HTMLDivElement>(null)
+  const { status, cancelProcessing } = useAIProcessingStatus(onStatusChange)
+  const { streamContent, streamContentRef } = useStreamContent(true)
 
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const currentStatus = await getAIProcessingStatus()
-        setStatus(currentStatus)
-        onStatusChange?.(currentStatus.isProcessing)
-      } catch (error) {
-        console.error('Failed to get AI processing status:', error)
-      }
-    }
-
-    // Check immediately
-    checkStatus()
-
-    // Check every 1 second for real-time updates
-    const interval = setInterval(checkStatus, 1000)
-
-    return () => clearInterval(interval)
-  }, [onStatusChange])
-  
-  // 监听流式内容更新
-  useEffect(() => {
-    const handleStreamContent = (...args: any[]) => {
-      // 在Electron IPC中，第一个参数通常是事件对象，第二个参数是实际数据
-      let content: any = null
-      
-      if (args.length >= 2) {
-        // 如果有多个参数，第二个参数通常是数据
-        content = args[1]
-      } else if (args.length === 1) {
-        // 如果只有一个参数，可能是数据本身
-        content = args[0]
-      }
-      
-      // 确保content是字符串
-      if (typeof content === 'string') {
-        setStreamContent(content)
-      } else {
-        // 尝试从对象中提取字符串数据
-        if (content && typeof content === 'object') {
-          // 检查是否有data属性
-          if ('data' in content && typeof content.data === 'string') {
-            setStreamContent(content.data)
-            return
-          }
-          
-          // 检查是否有message属性
-          if ('message' in content && typeof content.message === 'string') {
-            setStreamContent(content.message)
-            return
-          }
-          
-          // 尝试将对象转换为字符串
-          try {
-            const stringContent = JSON.stringify(content)
-            setStreamContent(stringContent)
-          } catch (e) {
-            console.error('无法转换对象为字符串:', e)
-          }
-        }
-      }
-    }
-    
-    // 监听来自主进程的流式内容
-    window.api.on('ai-stream-content', handleStreamContent)
-    
-    return () => {
-      window.api.off('ai-stream-content', handleStreamContent)
-    }
-  }, [])
-
-  // 自动滚动到最新内容
-  useEffect(() => {
-    if (streamContent && streamContentRef.current) {
-      // 使用setTimeout确保DOM更新后再滚动
-      setTimeout(() => {
-        if (streamContentRef.current) {
-          streamContentRef.current.scrollTop = streamContentRef.current.scrollHeight
-        }
-      }, 10)
-    }
-  }, [streamContent])
+  // 流式内容处理逻辑已移至useStreamContent hook中
 
   // 不再显示固定状态栏，改为使用独立窗口
   return null
@@ -110,22 +19,7 @@ export default function AIProcessingStatus({ onStatusChange }: AIProcessingStatu
   const seconds = elapsed % 60
 
   const handleCancel = async () => {
-    try {
-      await cancelAIProcessing()
-      setStatus({
-        isProcessing: false,
-        currentWords: [],
-        currentModelId: '',
-        startTime: 0,
-        streamOutput: [],
-        currentStep: '',
-        streamContent: ''
-      })
-      setStreamContent('') // 清空流式内容
-      onStatusChange?.(false)
-    } catch (error) {
-      console.error('Failed to cancel AI processing:', error)
-    }
+    await cancelProcessing()
   }
 
   return (

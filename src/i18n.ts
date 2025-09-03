@@ -1,7 +1,18 @@
+/**
+ * 国际化配置文件
+ * 使用 i18next 和 react-i18next 提供多语言支持
+ * 支持中文（zh）和英文（en）两种语言
+ */
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
+/**
+ * 翻译资源配置
+ * 包含应用中所有文本的中英文翻译
+ * 按功能模块组织，便于维护和扩展
+ */
 const resources = {
+  /** 中文翻译资源 */
   zh: {
     translation: {
       nav: {
@@ -188,6 +199,7 @@ const resources = {
       },
     },
   },
+  /** 英文翻译资源 */
   en: {
     translation: {
       nav: {
@@ -376,15 +388,16 @@ const resources = {
   },
 }
 
+// 初始化 i18next 配置
 i18n
-  .use(initReactI18next)
+  .use(initReactI18next) // 集成 React
   .init({
-    resources,
-    lng: 'zh',
-    fallbackLng: 'en',
-    interpolation: { escapeValue: false },
-    returnNull: false,
-    returnEmptyString: false,
+    resources, // 翻译资源
+    lng: 'zh', // 默认语言为中文
+    fallbackLng: 'en', // 回退语言为英文
+    interpolation: { escapeValue: false }, // 禁用 HTML 转义，允许在翻译中使用 HTML
+    returnNull: false, // 缺失翻译时不返回 null
+    returnEmptyString: false, // 缺失翻译时不返回空字符串
   })
 
 export default i18n

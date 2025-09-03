@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { addToBasket } from '@lib/ipc'
+import type { BasketAddResult } from '../../../shared/types'
 
 interface AddWordModalProps {
   isOpen: boolean
@@ -22,7 +23,7 @@ export default function AddWordModal({ isOpen, onClose, onSuccess }: AddWordModa
     setError('')
 
     try {
-      const result = await addToBasket(term.trim())
+      const result: BasketAddResult = await addToBasket(term.trim())
       if (result.ok) {
         setTerm('')
         onSuccess?.()
@@ -30,7 +31,7 @@ export default function AddWordModal({ isOpen, onClose, onSuccess }: AddWordModa
       } else {
         setError(result.error || t('modal.addWord.errors.failed'))
       }
-    } catch (err) {
+    } catch (err: unknown) {
       setError(t('modal.addWord.errors.failed'))
     } finally {
       setIsLoading(false)

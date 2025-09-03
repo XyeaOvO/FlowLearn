@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Settings, AIModelConfig } from '../../../shared/types'
+import type { Settings, AIModelConfig, BackupListResult, BackupNowResult, ExportDBResult, ImportDBResult, BackupRestoreResult, ResetAllResult } from '../../../shared/types'
 import { useTranslation } from 'react-i18next'
 import { exportDB, importDB, backupList, backupNow, backupOpenDir, backupRestore, resetAll } from '../../lib/ipc'
 import AIModelConfigComponent from './AIModelConfig'
+import { safeAsync } from '../../shared/lib/errorHandler'
 
 export default function SettingsView({ settings, onSave }: { settings: Settings; onSave: (s: Partial<Settings>) => void }) {
   const [local, setLocal] = useState(settings)
@@ -20,25 +21,33 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
   const [active, setActive] = useState<'basic' | 'filters' | 'ai' | 'tts' | 'data'>('basic')
   const loadBackups = async () => {
     try {
-      const r = await backupList() as { ok: boolean; list?: Array<{ fileName: string; fullPath: string; size: number; mtime: number }>; error?: string }
+      const r: BackupListResult = await backupList()
       if (r?.ok && Array.isArray(r.list)) setBackups(r.list)
-    } catch {}
+    } catch {
+    // Failed to test model
+  }
   }
   useEffect(() => {
     const load = () => {
       try {
         const list = window.speechSynthesis?.getVoices?.() || []
         setVoices(list)
-      } catch {}
+      } catch {
+      // Failed to delete model
+    }
     }
     load()
     try {
       window.speechSynthesis?.addEventListener?.('voiceschanged', load)
-    } catch {}
+    } catch {
+      // Failed to add voice change listener
+    }
     return () => {
       try {
         window.speechSynthesis?.removeEventListener?.('voiceschanged', load)
-      } catch {}
+      } catch {
+        // Failed to save model
+      }
     }
   }, [])
   useEffect(() => { loadBackups() }, [])
@@ -46,17 +55,19 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
     try {
       ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       setActive(key)
-    } catch {}
+    } catch {
+      // Failed to scroll to element
+    }
   }
 
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
       const map = new Map<HTMLElement, typeof active>([
-        [basicRef.current as any, 'basic'],
-        [filtersRef.current as any, 'filters'],
-        [aiRef.current as any, 'ai'],
-        [ttsRef.current as any, 'tts'],
-        [dataRef.current as any, 'data'],
+        [basicRef.current as HTMLElement, 'basic'],
+        [filtersRef.current as HTMLElement, 'filters'],
+        [aiRef.current as HTMLElement, 'ai'],
+        [ttsRef.current as HTMLElement, 'tts'],
+        [dataRef.current as HTMLElement, 'data'],
       ])
       const visible = entries
         .filter(e => e.isIntersecting)
@@ -275,7 +286,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
           <div className="form-row">
           <div className="form-group">
             <label className="form-label">{t('settings.theme')}</label>
-            <select className="select" value={local.theme || 'system'} onChange={e => setLocal({ ...local, theme: e.target.value as any })}>
+            <select className="select" value={local.theme || 'system'} onChange={e => setLocal({ ...local, theme: e.target.value as Settings['theme'] })}>
               <option value="system">{t('settings.themeSystem')}</option>
               <option value="light">{t('settings.themeLight')}</option>
               <option value="dark">{t('settings.themeDark')}</option>
@@ -283,7 +294,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
           </div>
           <div className="form-group">
             <label className="form-label">{t('settings.locale')}</label>
-            <select className="select" value={local.locale || 'zh'} onChange={e => setLocal({ ...local, locale: e.target.value as any })}>
+            <select className="select" value={local.locale || 'zh'} onChange={e => setLocal({ ...local, locale: e.target.value as Settings['locale'] })}>
               <option value="zh">{t('settings.localeZh')}</option>
               <option value="en">{t('settings.localeEn')}</option>
             </select>
@@ -292,7 +303,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
 
         <div className="form-group">
           <label className="form-label">窗口关闭行为</label>
-          <select className="select" value={local.closeAction || 'ask'} onChange={e => setLocal({ ...local, closeAction: e.target.value as any })}>
+          <select className="select" value={local.closeAction || 'ask'} onChange={e => setLocal({ ...local, closeAction: e.target.value as Settings['closeAction'] })}>
             <option value="ask">每次询问</option>
             <option value="minimize">最小化到系统托盘</option>
             <option value="exit">直接退出应用</option>
@@ -337,7 +348,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
           <select 
             className="select" 
             value={local.responseMode} 
-            onChange={e => setLocal({ ...local, responseMode: e.target.value as any })}
+            onChange={e => setLocal({ ...local, responseMode: e.target.value as Settings['responseMode'] })}
           >
             <option value="rich-summary">{t('settings.responseModeRich')}</option>
             <option value="json-only">{t('settings.responseModeJson')}</option>
@@ -481,7 +492,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
         )}
         <div className="form-group">
           <label className="form-label">{t('settings.ttsEngine')}</label>
-          <select className="select" value={local.ttsProvider || 'local'} onChange={e => setLocal({ ...local, ttsProvider: e.target.value as any })}>
+          <select className="select" value={local.ttsProvider || 'local'} onChange={e => setLocal({ ...local, ttsProvider: e.target.value as Settings['ttsProvider'] })}>
             <option value="local">本地（SpeechSynthesis）</option>
             <option value="volcengine">火山引擎 TTS</option>
           </select>
@@ -507,7 +518,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
             <div className="form-row">
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label">{t('settings.encoding')}</label>
-                <select className="select" value={local.volcEncoding || 'mp3'} onChange={e => setLocal({ ...local, volcEncoding: e.target.value as any })}>
+                <select className="select" value={local.volcEncoding || 'mp3'} onChange={e => setLocal({ ...local, volcEncoding: e.target.value as Settings['volcEncoding'] })}>
                   <option value="mp3">mp3</option>
                   <option value="ogg_opus">ogg_opus</option>
                   <option value="wav">wav</option>
@@ -556,9 +567,13 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
                   try { 
                     setVoices(window.speechSynthesis?.getVoices?.() || [])
                     setTimeout(() => {
-                      try { setVoices(window.speechSynthesis?.getVoices?.() || []) } catch {}
+                      try { setVoices(window.speechSynthesis?.getVoices?.() || []) } catch {
+                        // Failed to get voices
+                      }
                     }, 500)
-                  } catch {}
+                  } catch {
+          // Failed to update model
+        }
                 }}>{t('settings.voiceRefreshBtn')}</button>
                 <button className="btn" onClick={() => {
                   try {
@@ -573,14 +588,18 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
                       if (vv) u.voice = vv
                     }
                     s.cancel(); s.speak(u)
-                  } catch {}
+                  } catch {
+            // Failed to set default model
+          }
                 }}>{t('settings.voiceTestBtn')}</button>
               </div>
             ) : (
               <div className="form-row" style={{ gap: 8 }}>
                 <input className="input" value={local.ttsVoice || ''} onChange={e => setLocal({ ...local, ttsVoice: e.target.value })} placeholder="例如：Microsoft Aria Online (Natural) - English (United States)" />
                 <button className="btn" onClick={() => {
-                  try { window.speechSynthesis?.getVoices?.() } catch {}
+                  try { window.speechSynthesis?.getVoices?.() } catch {
+                     // Failed to get voices
+                   }
                 }}>{t('settings.voiceTryLoadBtn')}</button>
               </div>
             )}
@@ -607,29 +626,32 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
           <label className="form-label">{t('settings.importExportLabel')}</label>
           <div className="form-row" style={{ gap: 8 }}>
             <button className="btn" onClick={async () => {
-              try {
-                const r = await exportDB('json') as { ok: boolean; count?: number; error?: string }
-                setOpMsg(r?.ok ? `已导出为 JSON（${r.count || 0} 项）` : `导出失败：${r?.error || '未知错误'}`)
-              } catch (err: any) {
-                setOpMsg(`导出失败：${String(err?.message || err)}`)
-              }
-            }}>{t('data.exportJSON')}</button>
+               const result = await safeAsync(() => exportDB('json'))
+               if (result) {
+                 const r = result as ExportDBResult
+                 setOpMsg(r?.ok ? `已导出为 JSON（${r.count || 0} 项）` : `导出失败：${r?.error || '未知错误'}`)
+               } else {
+                 setOpMsg('导出失败')
+               }
+             }}>{t('data.exportJSON')}</button>
             <button className="btn" onClick={async () => {
-              try {
-                const r = await exportDB('csv') as { ok: boolean; count?: number; error?: string }
-                setOpMsg(r?.ok ? `已导出为 CSV（${r.count || 0} 项）` : `导出失败：${r?.error || '未知错误'}`)
-              } catch (err: any) {
-                setOpMsg(`导出失败：${String(err?.message || err)}`)
-              }
-            }}>{t('data.exportCSV')}</button>
+               const result = await safeAsync(() => exportDB('csv'))
+               if (result) {
+                 const r = result as ExportDBResult
+                 setOpMsg(r?.ok ? `已导出为 CSV（${r.count || 0} 项）` : `导出失败：${r?.error || '未知错误'}`)
+               } else {
+                 setOpMsg('导出失败')
+               }
+             }}>{t('data.exportCSV')}</button>
             <button className="btn" onClick={async () => {
-              try {
-                const r = await importDB() as { ok: boolean; added?: number; total?: number; error?: string }
-                setOpMsg(r?.ok ? `导入完成：新增 ${r.added || 0} / 共 ${r.total || 0}` : `导入失败：${r?.error || '未知错误'}`)
-              } catch (err: any) {
-                setOpMsg(`导入失败：${String(err?.message || err)}`)
-              }
-            }}>{t('data.import')}</button>
+               const result = await safeAsync(() => importDB())
+               if (result) {
+                 const r = result as ImportDBResult
+                 setOpMsg(r?.ok ? `导入完成：新增 ${r.added || 0} / 共 ${r.total || 0}` : `导入失败：${r?.error || '未知错误'}`)
+               } else {
+                 setOpMsg('导入失败')
+               }
+             }}>{t('data.import')}</button>
           </div>
           <div className="form-help">{t('data.importHelp')}</div>
         </div>
@@ -638,25 +660,32 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
           <label className="form-label">{t('data.backup')}</label>
           <div className="form-row" style={{ gap: 8 }}>
             <button className="btn" onClick={async () => {
-              try {
-                const r = await backupNow() as { ok: boolean; path?: string; error?: string }
-                setOpMsg(r?.ok ? '已创建备份' : `备份失败：${r?.error || '未知错误'}`)
-                await loadBackups()
-              } catch (err: any) {
-                setOpMsg(`备份失败：${String(err?.message || err)}`)
-              }
-            }}>{t('data.backupNow')}</button>
+               const result = await safeAsync(async () => {
+                 const r: BackupNowResult = await backupNow()
+                 await loadBackups()
+                 return r
+               })
+               if (result) {
+                 const r = result as BackupNowResult
+                 setOpMsg(r?.ok ? '已创建备份' : `备份失败：${r?.error || '未知错误'}`)
+               } else {
+                 setOpMsg('备份失败')
+               }
+             }}>{t('data.backupNow')}</button>
             <button className="btn" onClick={async () => {
-              try { await backupOpenDir() } catch {}
+              try { await backupOpenDir() } catch {
+                   // Failed to open backup directory
+                 }
             }}>{t('data.openDir')}</button>
             <button className="btn" onClick={async () => {
-              try {
-                const r = await backupRestore() as { ok: boolean; error?: string }
-                setOpMsg(r?.ok ? '已从备份恢复' : `恢复失败：${r?.error || '未知错误'}`)
-              } catch (err: any) {
-                setOpMsg(`恢复失败：${String(err?.message || err)}`)
-              }
-            }}>{t('data.restore')}</button>
+               const result = await safeAsync(() => backupRestore())
+               if (result) {
+                 const r = result as BackupRestoreResult
+                 setOpMsg(r?.ok ? '已从备份恢复' : `恢复失败：${r?.error || '未知错误'}`)
+               } else {
+                 setOpMsg('恢复失败')
+               }
+             }}>{t('data.restore')}</button>
             <button className="btn" onClick={loadBackups}>{t('data.refresh')}</button>
           </div>
           <div className="form-help">{t('data.autoDaily')}</div>
@@ -666,14 +695,15 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
           <label className="form-label" style={{ color: 'var(--danger)' }}>{t('data.dangerZone')}</label>
           <div className="form-row" style={{ gap: 8 }}>
             <button className="btn btn-danger" onClick={async () => {
-              try {
-                if (!confirm(t('data.resetAllConfirm'))) return
-                const r = await resetAll() as { ok: boolean; count?: number; error?: string }
-                setOpMsg(r?.ok ? t('data.resetAllDone', { count: r.count || 0 }) : `重置失败：${r?.error || '未知错误'}`)
-              } catch (err: any) {
-                setOpMsg(`重置失败：${String(err?.message || err)}`)
-              }
-            }}>{t('data.resetAll')}</button>
+               if (!confirm(t('data.resetAllConfirm'))) return
+               const result = await safeAsync(() => resetAll())
+               if (result) {
+                 const r = result as ResetAllResult
+                 setOpMsg(r?.ok ? t('data.resetAllDone', { count: r.count || 0 }) : `重置失败：${r?.error || '未知错误'}`)
+               } else {
+                 setOpMsg('重置失败')
+               }
+             }}>{t('data.resetAll')}</button>
           </div>
         </div>
 

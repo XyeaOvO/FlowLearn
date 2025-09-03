@@ -138,7 +138,9 @@ function readJsonFile<T>(filePath: string, fallback: T): T {
       const raw = fs.readFileSync(filePath, 'utf-8')
       return JSON.parse(raw) as T
     }
-  } catch {}
+  } catch {
+    // Failed to read file, use fallback
+  }
   return fallback
 }
 
@@ -146,7 +148,9 @@ function writeJsonFile<T>(filePath: string, value: T) {
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
     fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf-8')
-  } catch {}
+  } catch {
+    // Failed to write file
+  }
 }
 
 function migrateSettings(input: Settings): Settings {
@@ -258,8 +262,12 @@ function setSettings(newSettings: Partial<Settings>) {
   writeJsonFile(settingsFile, merged)
   // Re-register all hotkeys when settings change
   registerAllHotkeys(merged.hotkeys)
-  try { updateTrayMenu() } catch {}
-  try { scheduleReviewReminders() } catch {}
+  try { updateTrayMenu() } catch {
+    // Failed to update tray menu
+  }
+  try { scheduleReviewReminders() } catch {
+    // Failed to schedule reminders
+  }
 }
 
 function readDB(): StoredWord[] {
@@ -352,6 +360,11 @@ function createWindow() {
     minHeight: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
+      // 启用节点集成和上下文隔离的安全配置
+      nodeIntegration: false,
+      contextIsolation: true,
+      // 启用web安全
+      webSecurity: true,
     },
   })
 
@@ -518,7 +531,9 @@ function basicFilter(text: string, settings: Settings): boolean {
       try {
         const re = new RegExp(p)
         if (re.test(trimmed)) return false
-      } catch {}
+      } catch {
+        // JSON parsing failed, ignore
+      }
     }
   }
   return true
@@ -597,7 +612,9 @@ function scheduleReviewReminders() {
       if (now.getHours() === 0 && now.getMinutes() < 2) {
         reminderFiredKeysForToday.clear()
       }
-    } catch {}
+    } catch {
+      // JSON parsing failed
+    }
   }, 30 * 1000)
 }
 
@@ -617,7 +634,9 @@ function handleClipboardText(text: string) {
           win?.webContents.send('db-updated')
           return
         }
-      } catch {}
+      } catch {
+        // JSON parsing failed, ignore
+      }
     }
     return
   }
@@ -652,12 +671,12 @@ function handleClipboardText(text: string) {
   }
 }
 
-function isValidWordObject(obj: any): boolean {
-  return obj && typeof obj === 'object' &&
-    typeof obj.term === 'string' &&
-    typeof obj.definition === 'string' &&
-    typeof obj.phonetic === 'string' &&
-    typeof obj.example === 'string'
+function isValidWordObject(obj: unknown): obj is { term: string; definition: string; phonetic: string; example: string; domain?: string } {
+  return obj !== null && typeof obj === 'object' &&
+    'term' in obj && typeof (obj as any).term === 'string' &&
+    'definition' in obj && typeof (obj as any).definition === 'string' &&
+    'phonetic' in obj && typeof (obj as any).phonetic === 'string' &&
+    'example' in obj && typeof (obj as any).example === 'string'
 }
 
 function extractJson(input: string): string | null {
@@ -725,7 +744,9 @@ function importAIResultFromText(text: string): number {
       win?.webContents.send('db-updated')
       return arr.length
     }
-  } catch {}
+  } catch {
+          // Import failed
+        }
   return 0
 }
 
@@ -768,7 +789,9 @@ function registerHotkey(hotkey: string, callback: () => void): boolean {
       registeredHotkeys[hotkey] = hotkey
       return true
     }
-  } catch {}
+  } catch {
+    // Hotkey unregistration failed
+  }
   return false
 }
 
@@ -778,7 +801,9 @@ function registerAllHotkeys(hotkeys: Settings['hotkeys']) {
   Object.values(registeredHotkeys).forEach(hotkey => {
     try {
       globalShortcut.unregister(hotkey)
-    } catch {}
+    } catch {
+      // Hotkey registration failed
+    }
   })
   registeredHotkeys = {}
   
@@ -981,7 +1006,9 @@ function deleteWord(id: string) {
     db[idx].deletedAt = Date.now()
     writeDB(db)
     win?.webContents.send('db-updated')
-    try { updateTrayMenu() } catch {}
+    try { updateTrayMenu() } catch {
+    // Failed to update tray menu
+  }
   }
 }
 
@@ -992,7 +1019,9 @@ function restoreWord(id: string) {
     delete (db[idx] as any).deletedAt
     writeDB(db)
     win?.webContents.send('db-updated')
-    try { updateTrayMenu() } catch {}
+    try { updateTrayMenu() } catch {
+       // Failed to update tray menu
+     }
   }
 }
 
@@ -1007,7 +1036,9 @@ function bulkUpdate(ids: string[], changes: Partial<StoredWord>) {
     }
   }
   if (changed > 0) writeDB(db)
-  if (changed > 0) { win?.webContents.send('db-updated'); try { updateTrayMenu() } catch {} }
+  if (changed > 0) { win?.webContents.send('db-updated'); try { updateTrayMenu() } catch {
+    // Failed to update tray menu
+  } }
   return changed
 }
 
@@ -1023,7 +1054,9 @@ function bulkDelete(ids: string[]) {
     }
   }
   if (changed > 0) writeDB(db)
-  if (changed > 0) { win?.webContents.send('db-updated'); try { updateTrayMenu() } catch {} }
+  if (changed > 0) { win?.webContents.send('db-updated'); try { updateTrayMenu() } catch {
+     // Failed to update tray menu
+   } }
   return changed
 }
 
@@ -1321,7 +1354,9 @@ ipcMain.handle('db:import', async () => {
 })
 
 function ensureDir(p: string) {
-  try { fs.mkdirSync(p, { recursive: true }) } catch {}
+  try { fs.mkdirSync(p, { recursive: true }) } catch {
+    // Failed to create directory
+  }
 }
 
 function formatTs(ts: number) {
@@ -1645,7 +1680,7 @@ async function callAIModel(modelConfig: AIModelConfig, prompt: string): Promise<
   }
 }
 
-async function processWordsWithAI(words: string[], modelId: string): Promise<{ success: boolean; result?: any; error?: string; fullResponse?: string }> {
+async function processWordsWithAI(words: string[], modelId: string): Promise<{ success: boolean; result?: Array<{ term: string; definition: string; phonetic: string; example: string; domain?: string }>; error?: string; fullResponse?: string }> {
   const maxRetries = 2 // 最大重试次数
   let lastError: string = ''
   
@@ -1952,7 +1987,7 @@ async function startAIProcessing(confirmedWords: string[]) {
       
       new Notification({
         title: 'AI处理完成',
-        body: `${result.result.length} 个词汇已成功保存！`
+        body: `${result.result?.length || 0} 个词汇已成功保存！`
       }).show()
       
       win?.webContents.send('db-updated')
@@ -2046,6 +2081,16 @@ app.on('activate', () => {
     createWindow()
   }
 })
+
+// 添加命令行参数以解决Windows缓存问题，同时保持性能
+if (process.platform === 'win32') {
+  // 仅禁用有问题的GPU功能，保留基本GPU加速
+  app.commandLine.appendSwitch('--disable-gpu-sandbox')
+  app.commandLine.appendSwitch('--disable-features', 'VizDisplayCompositor')
+  // 禁用缓存相关功能以避免权限问题
+  app.commandLine.appendSwitch('--disk-cache-size', '0')
+  app.commandLine.appendSwitch('--media-cache-size', '0')
+}
 
 app.whenReady().then(() => {
   // Required for Windows notifications

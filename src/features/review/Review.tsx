@@ -54,7 +54,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
     if (current && reviewSettings?.ttsEnabled && reviewSettings?.ttsAutoOnSelect) {
       try {
         if (reviewSettings.ttsProvider === 'volcengine') {
-          ;(async () => {
+          (async () => {
             const res = await window.api.invoke('tts:volc:query', current.term) as { ok: boolean; base64?: string; encoding?: string; error?: string }
             if (!res.ok || !res.base64) return
             const bstr = atob(res.base64)
@@ -79,9 +79,12 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
             const v = s.getVoices().find(v => v.name === reviewSettings.ttsVoice)
             if (v) u.voice = v
           }
-          s.cancel(); s.speak(u)
+          s.cancel()
+        s.speak(u)
         }
-      } catch {}
+      } catch {
+      // Failed to load due words
+    }
     }
   }, [current, reviewSettings])
 
@@ -146,7 +149,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
   const speakWord = () => {
     try {
       if (reviewSettings?.ttsProvider === 'volcengine') {
-        ;(async () => {
+        (async () => {
           const res = await window.api.invoke('tts:volc:query', current.term) as { ok: boolean; base64?: string; encoding?: string; error?: string }
           if (!res.ok || !res.base64) return
           const bstr = atob(res.base64)
@@ -171,8 +174,11 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
         const v = s.getVoices().find(v => v.name === reviewSettings.ttsVoice)
         if (v) u.voice = v
       }
-      s.cancel(); s.speak(u)
-    } catch {}
+      s.cancel()
+      s.speak(u)
+    } catch {
+        // Failed to apply review result
+      }
   }
 
   return (

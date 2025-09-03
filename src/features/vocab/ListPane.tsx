@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { Word } from '../../../shared/types'
-import { filterWords, type VocabFilter } from './filters'
+import { type VocabFilter } from './filters'
 import { useTranslation } from 'react-i18next'
+import { useOptimizedFilter } from '../../shared/lib/useOptimizedFilter'
 
 export default function ListPane({
   words,
@@ -47,7 +48,8 @@ export default function ListPane({
   onBulkUpdateStatus: (ids: string[], status: Word['reviewStatus']) => void
   width?: number
 }) {
-  const filtered = useMemo(() => filterWords(words, filter), [words, filter])
+  // 使用优化的过滤Hook
+   const { filteredWords: filtered } = useOptimizedFilter(words, filter)
   const { t } = useTranslation()
   const [bulkDomain, setBulkDomain] = useState('')
   const [bulkStatus, setBulkStatus] = useState<Word['reviewStatus']>('learning')
@@ -255,7 +257,7 @@ export default function ListPane({
                     <select 
                       className="action-select" 
                       value={bulkStatus} 
-                      onChange={e => setBulkStatus(e.target.value as any)}
+                      onChange={e => setBulkStatus(e.target.value as Word['reviewStatus'])}
                     >
                       <option value="new">{t('status.new')}</option>
                       <option value="learning">{t('status.learning')}</option>
