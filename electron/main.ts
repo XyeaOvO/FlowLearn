@@ -407,6 +407,9 @@ function createWindow() {
     },
   })
 
+  // 隐藏菜单栏
+  Menu.setApplicationMenu(null)
+
   // Handle window close event based on user settings
   win.on('close', (event) => {
     // 如果应用正在退出，直接允许关闭
