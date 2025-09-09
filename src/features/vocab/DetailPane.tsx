@@ -194,7 +194,10 @@ export default function DetailPane({
               <button className="btn btn-primary" onClick={onSave}>{t('actions.save')}</button>
             </>
           )}
-          <button className="btn btn-danger" onClick={onDelete}>{t('actions.deleteWord')}</button>
+          <button className="btn btn-danger" onClick={() => {
+            console.log('删除按钮被点击')
+            onDelete()
+          }}>{t('actions.deleteWord')}</button>
         </div>
 
         {(!editing && word.analysis) && (

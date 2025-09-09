@@ -396,10 +396,26 @@ function App() {
               speak={speak}
               settings={settings}
               onDelete={async () => {
-                if (!selected) return
-                await dbDelete(selected.id)
-                setSelected(null)
-                refresh()
+                if (!selected) {
+                  console.log('没有选中的单词')
+                  return
+                }
+                console.log('开始删除单词:', selected.term, 'ID:', selected.id)
+                try {
+                  const result = await dbDelete(selected.id)
+                  console.log('删除操作返回结果:', result)
+                  if (result && result.ok) {
+                    console.log('删除成功，清除选中状态并刷新列表')
+                    setSelected(null)
+                    await refresh()
+                  } else {
+                    console.error('删除失败:', result?.error || '未知错误')
+                    alert('删除失败: ' + (result?.error || '未知错误'))
+                  }
+                } catch (error) {
+                  console.error('删除操作出错:', error)
+                  alert('删除操作出错: ' + error)
+                }
               }}
               onSave={async () => {
                 if (!draft) return

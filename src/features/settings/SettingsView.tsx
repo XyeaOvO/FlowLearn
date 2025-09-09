@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Settings, AIModelConfig, BackupListResult, BackupNowResult, ExportDBResult, ImportDBResult, BackupRestoreResult, ResetAllResult } from '../../../shared/types'
 import { useTranslation } from 'react-i18next'
-import { exportDB, importDB, backupList, backupNow, backupOpenDir, backupRestore, resetAll } from '../../lib/ipc'
+import { exportDB, importDB, backupList, backupNow, backupOpenDir, backupRestore, resetAll, dbRebuild } from '../../lib/ipc'
 import AIModelConfigComponent from './AIModelConfig'
 import { safeAsync } from '../../shared/lib/errorHandler'
 import { SettingsIcon, SearchIcon, RobotIcon, VolumeIcon, DatabaseIcon } from '../../shared/components/Icon'
@@ -692,6 +692,16 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
         <div className="form-group" style={{ borderTop: '1px dashed var(--border)', paddingTop: 12, marginTop: 12 }}>
           <label className="form-label" style={{ color: 'var(--danger)' }}>{t('data.dangerZone')}</label>
           <div className="form-row" style={{ gap: 8 }}>
+            <button className="btn btn-warning" onClick={async () => {
+               if (!confirm('数据库重建将尝试修复损坏的数据库文件。此操作会备份现有数据并重新创建数据库。确定要继续吗？')) return
+               const result = await safeAsync(() => dbRebuild())
+               if (result) {
+                 const r = result as { ok: boolean; error?: string; restoredCount?: number }
+                 setOpMsg(r?.ok ? `数据库重建成功，恢复了 ${r.restoredCount || 0} 个词条` : `重建失败：${r?.error || '未知错误'}`)
+               } else {
+                 setOpMsg('重建失败')
+               }
+             }}>重建数据库</button>
             <button className="btn btn-danger" onClick={async () => {
                if (!confirm(t('data.resetAllConfirm'))) return
                const result = await safeAsync(() => resetAll())

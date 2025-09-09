@@ -282,20 +282,20 @@ function initializeDatabase() {
     
     // 检查是否需要从JSON迁移数据
     if (fs.existsSync(dbFile)) {
-      console.log('检测到旧的JSON数据库文件，开始迁移...')
+      console.log('Detected old JSON database file, starting migration...')
       dbManager.migrateFromJSON(dbFile).then(result => {
-        console.log(`数据迁移完成: 成功迁移 ${result.migrated} 条记录`)
+        console.log(`Data migration completed: successfully migrated ${result.migrated} records`)
         if (result.errors.length > 0) {
-          console.warn('迁移过程中的错误:', result.errors)
+          console.warn('Errors during migration:', result.errors)
         }
         // 通知渲染进程数据库已更新
         win?.webContents.send('db-updated')
       }).catch(error => {
-        console.error('数据迁移失败:', error)
+        console.error('Data migration failed:', error)
       })
     }
   } catch (error) {
-    console.error('数据库初始化失败:', error)
+    console.error('Database initialization failed:', error)
   }
 }
 
@@ -310,7 +310,7 @@ function readDB(): StoredWord[] {
 
 // 兼容性函数：写入数据库（已弃用，使用具体的数据库操作）
 function writeDB(data: StoredWord[]) {
-  console.warn('writeDB函数已弃用，请使用具体的数据库操作方法')
+  console.warn('writeDB function is deprecated, please use specific database operation methods')
   // 为了兼容性，暂时保留
   writeJsonFile(dbFile, data)
 }
@@ -1338,7 +1338,7 @@ function bulkUpdate(ids: string[], changes: Partial<StoredWord>): number {
     }
     return changed
   } catch (error) {
-    console.error('批量更新失败:', error)
+    console.error('Bulk update failed:', error)
     return 0
   }
 }
@@ -1370,7 +1370,7 @@ function bulkDelete(ids: string[]): number {
     }
     return changed
   } catch (error) {
-    console.error('批量删除失败:', error)
+    console.error('Bulk delete failed:', error)
     return 0
   }
 }
@@ -1401,7 +1401,7 @@ function bulkRestore(ids: string[]): number {
     }
     return changed
   } catch (error) {
-    console.error('批量恢复失败:', error)
+    console.error('Bulk restore failed:', error)
     return 0
   }
 }
@@ -1793,6 +1793,83 @@ function resetAllWords() {
       return { ok: true, count: db.length }
     }
   } catch (err: any) {
+    return { ok: false, error: String(err?.message || err) }
+  }
+}
+
+// Rebuild corrupted database
+function rebuildDatabase() {
+  try {
+    console.log('Starting database rebuild...')
+    
+    // 备份当前数据（如果可能的话）
+    let backupData: StoredWord[] = []
+    try {
+      if (dbManager) {
+        backupData = dbManager.getAllWords()
+      }
+    } catch (error) {
+      console.warn('Unable to read data from corrupted database:', error)
+    }
+    
+    // 关闭当前数据库连接
+    if (dbManager) {
+      try {
+        dbManager.close()
+      } catch (error) {
+        console.warn('Failed to close database connection:', error)
+      }
+    }
+    
+    // 清理数据库管理器单例
+    closeDatabaseManager()
+    dbManager = null
+    
+    // 删除损坏的数据库文件
+    if (fs.existsSync(sqliteDbPath)) {
+      try {
+        fs.unlinkSync(sqliteDbPath)
+        console.log('Corrupted database file deleted')
+      } catch (error) {
+        console.error('Failed to delete database file:', error)
+        return { ok: false, error: 'Unable to delete corrupted database file: ' + error }
+      }
+    }
+    
+    // 重新初始化数据库
+    try {
+      dbManager = getDatabaseManager(sqliteDbPath)
+      console.log('Database rebuild successful')
+    } catch (error) {
+      console.error('Failed to reinitialize database:', error)
+      return { ok: false, error: 'Failed to reinitialize database: ' + error }
+    }
+    
+    // 如果有备份数据，尝试恢复
+    let restoredCount = 0
+    if (backupData.length > 0) {
+      try {
+        for (const word of backupData) {
+          dbManager.addWord(word)
+          restoredCount++
+        }
+        console.log(`Restored ${restoredCount} vocabulary records`)
+      } catch (error) {
+        console.warn('Error occurred while restoring data:', error)
+      }
+    }
+    
+    // 通知前端数据库已更新
+    win?.webContents.send('db-updated')
+    
+    return { 
+      ok: true, 
+      restoredCount: restoredCount,
+      message: `数据库重建成功${restoredCount > 0 ? `，已恢复 ${restoredCount} 条记录` : ''}` 
+    }
+    
+  } catch (err: any) {
+    console.error('Database rebuild failed:', err)
     return { ok: false, error: String(err?.message || err) }
   }
 }
@@ -2300,6 +2377,7 @@ async function startAIProcessing(confirmedWords: string[]) {
 }
 
 ipcMain.handle('db:resetAll', () => resetAllWords())
+ipcMain.handle('db:rebuild', () => rebuildDatabase())
 
 // IPC handlers for AI functionality
 ipcMain.handle('test-ai-model', async (_e, modelConfig: AIModelConfig) => {

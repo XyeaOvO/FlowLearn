@@ -1,4 +1,4 @@
-import type { Word, Settings, AIModelConfig, AIProcessingStatus, BasketAddResult, AIModelTestResult, BackupListResult, ImportDBResult, BackupNowResult, BackupRestoreResult, ResetAllResult } from '../../shared/types'
+import type { Word, Settings, AIModelConfig, AIProcessingStatus, BasketAddResult, AIModelTestResult, BackupListResult, ImportDBResult, BackupNowResult, BackupRestoreResult, ResetAllResult, DeleteWordResult } from '../../shared/types'
 
 export async function ipcInvoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T> {
   // 检查是否在Electron环境中
@@ -49,13 +49,14 @@ export const addToBasket = (term: string) => ipcInvoke<BasketAddResult>('basket:
 
 // DB
 export const dbList = () => ipcInvoke('db:list')
-export const dbDelete = (id: string) => ipcInvoke('db:delete', id)
+export const dbDelete = (id: string) => ipcInvoke<DeleteWordResult>('db:delete', id)
 export const dbUpdate = (w: Word) => ipcInvoke('db:update', w)
 export const dbDeletedList = () => ipcInvoke('db:deleted:list')
 export const dbRestore = (id: string) => ipcInvoke('db:restore', id)
 export const dbBulkUpdate = (ids: string[], changes: Partial<Word>) => ipcInvoke('db:bulkUpdate', ids, changes)
 export const dbBulkDelete = (ids: string[]) => ipcInvoke('db:bulkDelete', ids)
 export const dbBulkRestore = (ids: string[]) => ipcInvoke('db:bulkRestore', ids)
+export const dbRebuild = () => ipcInvoke<{ ok: boolean; message?: string; error?: string }>('db:rebuild')
 
 // Review (FSRS)
 export type ReviewGrade = 'again' | 'hard' | 'good' | 'easy'

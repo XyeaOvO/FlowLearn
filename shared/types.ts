@@ -176,9 +176,19 @@ export interface BackupRestoreResult {
 export interface ResetAllResult {
   /** 操作是否成功 */
   ok: boolean
-  /** 重置的记录数量 */
+  /** 重置的记录数量（操作成功时） */
   count?: number
-  /** 错误信息 */
+  /** 错误信息（操作失败时） */
+  error?: string
+}
+
+/**
+ * 删除单词操作结果接口
+ */
+export interface DeleteWordResult {
+  /** 操作是否成功 */
+  ok: boolean
+  /** 错误信息（操作失败时） */
   error?: string
 }
 
