@@ -34,14 +34,8 @@
 .brand-icon {
   width: 32px;
   height: 32px;
-  background: var(--color-primary);
-  border-radius: var(--radius-lg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-inverse);
-  font-weight: var(--font-weight-semibold);
-  font-size: var(--font-size-sm);
+  border-radius: 4px;
+  object-fit: contain;
   box-shadow: var(--shadow-sm);
 }
 

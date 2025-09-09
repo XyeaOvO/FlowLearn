@@ -188,7 +188,7 @@ function App() {
       <div className="sidebar">
         <div className="sidebar-header">
           <div className="brand">
-            <div className="brand-icon">F</div>
+            <img src="/icon.png" alt="FlowLearn" className="brand-icon" />
             <span>FlowLearn</span>
           </div>
         </div>
