@@ -10,9 +10,60 @@ import type { Word } from '../../shared/types'
 export class DatabaseManager {
   private db: Database.Database
   private dbPath: string
-  private queryCache: Map<string, { data: any; timestamp: number }> = new Map()
+  // 增强的缓存系统
+  private queryCache: Map<string, { 
+    data: unknown; 
+    timestamp: number; 
+    accessCount: number;
+    lastAccessed: number;
+    size: number;
+  }> = new Map()
+  
   private readonly CACHE_TTL = 5 * 60 * 1000 // 5分钟缓存
-  private readonly MAX_CACHE_SIZE = 100
+  private readonly MAX_CACHE_SIZE = 200 // 增加缓存容量
+  private readonly MAX_MEMORY_USAGE = 50 * 1024 * 1024 // 50MB内存限制
+  
+  // 缓存统计
+  private cacheStats = {
+    hits: 0,
+    misses: 0,
+    evictions: 0,
+    memoryUsage: 0,
+    totalSize: 0
+  }
+  
+  // 查询性能监控
+  private queryStats: Map<string, { count: number; totalTime: number; avgTime: number; slowQueries: number }> = new Map()
+  private readonly SLOW_QUERY_THRESHOLD = 100 // 100ms
+  private readonly ENABLE_QUERY_MONITORING = process.env.NODE_ENV === 'development'
+  
+  // 连接池配置
+  private static readonly CONNECTION_POOL_CONFIG = {
+    maxConnections: 5,
+    idleTimeout: 30000, // 30秒
+    busyTimeout: 5000,  // 5秒
+    checkInterval: 10000 // 10秒检查一次
+  }
+  
+  // 连接池状态
+  private connectionPool: {
+    connections: Database.Database[]
+    activeConnections: Set<Database.Database>
+    lastUsed: Map<Database.Database, number>
+    cleanupTimer?: NodeJS.Timeout
+  } = {
+    connections: [],
+    activeConnections: new Set(),
+    lastUsed: new Map()
+  }
+  
+  // 数据库健康状态
+  private healthStatus = {
+    isHealthy: true,
+    lastCheck: Date.now(),
+    errorCount: 0,
+    lastError: null as Error | null
+  }
 
   constructor(dbPath: string) {
     this.dbPath = dbPath
@@ -20,6 +71,9 @@ export class DatabaseManager {
     
     // 定期清理过期缓存
     setInterval(() => this.cleanExpiredCache(), 60 * 1000) // 每分钟清理一次
+    
+    this.initConnectionPool()
+    this.startHealthMonitoring()
   }
 
   /**
@@ -201,7 +255,7 @@ export class DatabaseManager {
             id, term, definition, phonetic, example, domain, addedAt,
             reviewStatus, reviewDueDate, analysis, fsrsDifficulty,
             fsrsStability, fsrsLastReviewedAt, fsrsReps, fsrsLapses, deletedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
 
         for (const word of wordsToMigrate) {
@@ -248,12 +302,24 @@ export class DatabaseManager {
    * 获取所有词汇（不包括已删除的）
    */
   getAllWords(): Word[] {
+    const cacheKey = 'getAllWords'
+    const cached = this.getCachedResult<Word[]>(cacheKey)
+    if (cached) {
+      return cached
+    }
+
+    const startTime = Date.now()
     const stmt = this.db.prepare(`
       SELECT * FROM words 
       WHERE deletedAt IS NULL 
       ORDER BY addedAt DESC
     `)
-    return stmt.all() as Word[]
+    const result = stmt.all() as Word[]
+    
+    this.recordQueryPerformance('getAllWords', Date.now() - startTime)
+    this.setCachedResult(cacheKey, result)
+    
+    return result
   }
 
   /**
@@ -272,8 +338,20 @@ export class DatabaseManager {
    * 根据ID获取词汇
    */
   getWordById(id: string): Word | null {
+    const cacheKey = `getWordById:${id}`
+    const cached = this.getCachedResult<Word | null>(cacheKey)
+    if (cached !== null) {
+      return cached
+    }
+
+    const startTime = Date.now()
     const stmt = this.db.prepare('SELECT * FROM words WHERE id = ?')
-    return stmt.get(id) as Word || null
+    const result = stmt.get(id) as Word || null
+    
+    this.recordQueryPerformance('getWordById', Date.now() - startTime)
+    this.setCachedResult(cacheKey, result)
+    
+    return result
   }
 
   /**
@@ -281,12 +359,14 @@ export class DatabaseManager {
    */
   addWord(word: Omit<Word, 'id'>): string {
     const id = `word_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const startTime = Date.now()
+    
     const stmt = this.db.prepare(`
       INSERT INTO words (
         id, term, definition, phonetic, example, domain, addedAt,
         reviewStatus, reviewDueDate, analysis, fsrsDifficulty,
         fsrsStability, fsrsLastReviewedAt, fsrsReps, fsrsLapses
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -307,10 +387,285 @@ export class DatabaseManager {
       word.fsrsLapses || 0
     )
 
+    this.recordQueryPerformance('addWord', Date.now() - startTime)
     // 清除相关缓存
     this.invalidateCache()
 
     return id
+  }
+
+  /**
+   * 批量添加词汇 - 高性能版本
+   * 使用事务和预编译语句提高性能
+   */
+  bulkAddWords(words: Omit<Word, 'id'>[]): { success: number; errors: string[] } {
+    if (words.length === 0) return { success: 0, errors: [] }
+
+    const startTime = Date.now()
+    const errors: string[] = []
+    let success = 0
+
+    const stmt = this.db.prepare(`
+      INSERT INTO words (
+        id, term, definition, phonetic, example, domain, addedAt,
+        reviewStatus, reviewDueDate, analysis, fsrsDifficulty,
+        fsrsStability, fsrsLastReviewedAt, fsrsReps, fsrsLapses
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const transaction = this.db.transaction((wordsToAdd: Omit<Word, 'id'>[]) => {
+      for (const word of wordsToAdd) {
+        try {
+          const id = `word_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+          stmt.run(
+            id,
+            word.term,
+            word.definition,
+            word.phonetic,
+            word.example,
+            word.domain || null,
+            word.addedAt,
+            word.reviewStatus,
+            word.reviewDueDate,
+            word.analysis || null,
+            word.fsrsDifficulty || 5.0,
+            word.fsrsStability || 0.5,
+            word.fsrsLastReviewedAt || null,
+            word.fsrsReps || 0,
+            word.fsrsLapses || 0
+          )
+          success++
+        } catch (error) {
+          errors.push(`添加词汇 ${word.term} 失败: ${error}`)
+        }
+      }
+    })
+
+    try {
+      transaction(words)
+    } catch (error) {
+      errors.push(`批量添加事务失败: ${error}`)
+    }
+
+    this.recordQueryPerformance('bulkAddWords', Date.now() - startTime)
+    this.invalidateCache()
+
+    return { success, errors }
+  }
+
+  /**
+   * 批量更新复习状态
+   * 专门用于复习结果的批量更新，性能更优
+   */
+  bulkUpdateReviewStatus(
+    updates: Array<{
+      id: string
+      reviewStatus: string
+      reviewDueDate: number | null
+      fsrsDifficulty: number
+      fsrsStability: number
+      fsrsLastReviewedAt: number
+      fsrsReps: number
+      fsrsLapses: number
+    }>
+  ): { success: number; errors: string[] } {
+    if (updates.length === 0) return { success: 0, errors: [] }
+
+    const startTime = Date.now()
+    const errors: string[] = []
+    let success = 0
+
+    const stmt = this.db.prepare(`
+      UPDATE words SET 
+        reviewStatus = ?,
+        reviewDueDate = ?,
+        fsrsDifficulty = ?,
+        fsrsStability = ?,
+        fsrsLastReviewedAt = ?,
+        fsrsReps = ?,
+        fsrsLapses = ?,
+        updatedAt = strftime('%s', 'now') * 1000
+      WHERE id = ?
+    `)
+
+    const transaction = this.db.transaction((updatesToProcess: typeof updates) => {
+      for (const update of updatesToProcess) {
+        try {
+          const result = stmt.run(
+            update.reviewStatus,
+            update.reviewDueDate,
+            update.fsrsDifficulty,
+            update.fsrsStability,
+            update.fsrsLastReviewedAt,
+            update.fsrsReps,
+            update.fsrsLapses,
+            update.id
+          )
+          if (result.changes > 0) {
+            success++
+          }
+        } catch (error) {
+          errors.push(`更新词汇 ${update.id} 失败: ${error}`)
+        }
+      }
+    })
+
+    try {
+      transaction(updates)
+    } catch (error) {
+      errors.push(`批量更新复习状态事务失败: ${error}`)
+    }
+
+    this.recordQueryPerformance('bulkUpdateReviewStatus', Date.now() - startTime)
+    this.invalidateCache()
+
+    return { success, errors }
+  }
+
+  /**
+   * 批量更新词汇领域
+   * 专门用于批量修改词汇的领域分类
+   */
+  bulkUpdateDomain(ids: string[], domain: string | null): number {
+    if (ids.length === 0) return 0
+
+    const startTime = Date.now()
+    
+    // 对于大批量操作，使用事务处理
+    if (ids.length > 100) {
+      return this.bulkUpdateDomainWithTransaction(ids, domain)
+    }
+
+    const placeholders = ids.map(() => '?').join(', ')
+    const sql = `
+      UPDATE words SET 
+        domain = ?,
+        updatedAt = strftime('%s', 'now') * 1000
+      WHERE id IN (${placeholders})
+    `
+
+    const stmt = this.db.prepare(sql)
+    const result = stmt.run(domain, ...ids)
+    
+    this.recordQueryPerformance('bulkUpdateDomain', Date.now() - startTime)
+    
+    if (result.changes > 0) {
+      this.invalidateCache()
+    }
+    
+    return result.changes
+  }
+
+  /**
+   * 使用事务处理的批量更新领域
+   */
+  private bulkUpdateDomainWithTransaction(ids: string[], domain: string | null): number {
+    const batchSize = 500
+    let totalChanges = 0
+
+    const stmt = this.db.prepare(`
+      UPDATE words SET 
+        domain = ?,
+        updatedAt = strftime('%s', 'now') * 1000
+      WHERE id = ?
+    `)
+
+    const transaction = this.db.transaction((batchIds: string[]) => {
+      for (const id of batchIds) {
+        const result = stmt.run(domain, id)
+        totalChanges += result.changes
+      }
+    })
+
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize)
+      transaction(batch)
+    }
+
+    if (totalChanges > 0) {
+      this.invalidateCache()
+    }
+
+    return totalChanges
+  }
+
+  /**
+   * 批量重置复习进度
+   * 将指定词汇的复习状态重置为新词汇
+   */
+  bulkResetReviewProgress(ids: string[]): number {
+    if (ids.length === 0) return 0
+
+    const startTime = Date.now()
+    
+    // 对于大批量操作，使用事务处理
+    if (ids.length > 100) {
+      return this.bulkResetReviewProgressWithTransaction(ids)
+    }
+
+    const placeholders = ids.map(() => '?').join(', ')
+    const sql = `
+      UPDATE words SET 
+        reviewStatus = 'new',
+        reviewDueDate = NULL,
+        fsrsDifficulty = 5.0,
+        fsrsStability = 0.5,
+        fsrsLastReviewedAt = NULL,
+        fsrsReps = 0,
+        fsrsLapses = 0,
+        updatedAt = strftime('%s', 'now') * 1000
+      WHERE id IN (${placeholders}) AND deletedAt IS NULL
+    `
+
+    const stmt = this.db.prepare(sql)
+    const result = stmt.run(...ids)
+    
+    this.recordQueryPerformance('bulkResetReviewProgress', Date.now() - startTime)
+    
+    if (result.changes > 0) {
+      this.invalidateCache()
+    }
+    
+    return result.changes
+  }
+
+  /**
+   * 使用事务处理的批量重置复习进度
+   */
+  private bulkResetReviewProgressWithTransaction(ids: string[]): number {
+    const batchSize = 500
+    let totalChanges = 0
+
+    const stmt = this.db.prepare(`
+      UPDATE words SET 
+        reviewStatus = 'new',
+        reviewDueDate = NULL,
+        fsrsDifficulty = 5.0,
+        fsrsStability = 0.5,
+        fsrsLastReviewedAt = NULL,
+        fsrsReps = 0,
+        fsrsLapses = 0,
+        updatedAt = strftime('%s', 'now') * 1000
+      WHERE id = ? AND deletedAt IS NULL
+    `)
+
+    const transaction = this.db.transaction((batchIds: string[]) => {
+      for (const id of batchIds) {
+        const result = stmt.run(id)
+        totalChanges += result.changes
+      }
+    })
+
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize)
+      transaction(batch)
+    }
+
+    if (totalChanges > 0) {
+      this.invalidateCache()
+    }
+
+    return totalChanges
   }
 
   /**
@@ -619,6 +974,13 @@ export class DatabaseManager {
    * 优化查询性能，使用复合索引
    */
   getDueWords(limit?: number): Word[] {
+    const cacheKey = `getDueWords:${limit || 'all'}:${Math.floor(Date.now() / (5 * 60 * 1000))}` // 5分钟缓存
+    const cached = this.getCachedResult<Word[]>(cacheKey)
+    if (cached) {
+      return cached
+    }
+
+    const startTime = Date.now()
     const now = Date.now()
     let sql = `
       SELECT * FROM words 
@@ -633,7 +995,12 @@ export class DatabaseManager {
     }
 
     const stmt = this.db.prepare(sql)
-    return stmt.all(now) as Word[]
+    const result = stmt.all(now) as Word[]
+    
+    this.recordQueryPerformance('getDueWords', Date.now() - startTime)
+    this.setCachedResult(cacheKey, result)
+    
+    return result
   }
 
   /**
@@ -641,6 +1008,13 @@ export class DatabaseManager {
    * 利用领域索引提高查询性能
    */
   getWordsByDomain(domain: string, includeDeleted: boolean = false): Word[] {
+    const cacheKey = `getWordsByDomain:${domain}:${includeDeleted}`
+    const cached = this.getCachedResult<Word[]>(cacheKey)
+    if (cached) {
+      return cached
+    }
+
+    const startTime = Date.now()
     let sql = `
       SELECT * FROM words 
       WHERE domain = ?
@@ -653,7 +1027,12 @@ export class DatabaseManager {
     sql += ` ORDER BY createdAt DESC`
 
     const stmt = this.db.prepare(sql)
-    return stmt.all(domain) as Word[]
+    const result = stmt.all(domain) as Word[]
+    
+    this.recordQueryPerformance('getWordsByDomain', Date.now() - startTime)
+    this.setCachedResult(cacheKey, result)
+    
+    return result
   }
 
   /**
@@ -745,7 +1124,14 @@ export class DatabaseManager {
     const cacheKey = `stats:${Math.floor(today / (60 * 1000))}` // 按分钟缓存
     
     // 尝试从缓存获取
-    const cached = this.getCachedResult<any>(cacheKey)
+    const cached = this.getCachedResult<{
+      total: number
+      new: number
+      learning: number
+      mastered: number
+      deleted: number
+      dueToday: number
+    }>(cacheKey)
     if (cached) {
       return cached
     }
@@ -763,7 +1149,14 @@ export class DatabaseManager {
     `
     
     const stmt = this.db.prepare(sql)
-    const result = stmt.get(today) as any
+    const result = stmt.get(today) as {
+      total?: number
+      new?: number
+      learning?: number
+      mastered?: number
+      deleted?: number
+      dueToday?: number
+    }
     
     const stats = {
       total: result.total || 0,
@@ -822,7 +1215,10 @@ export class DatabaseManager {
     `
     
     const stmt = this.db.prepare(sql)
-    const result = stmt.get(todayStart.getTime(), weekStart) as any
+    const result = stmt.get(todayStart.getTime(), weekStart) as {
+      reviewedToday?: number
+      reviewedThisWeek?: number
+    }
     
     return {
       reviewedToday: result.reviewedToday || 0,
@@ -836,44 +1232,385 @@ export class DatabaseManager {
    */
   private getCachedResult<T>(key: string): T | null {
     const cached = this.queryCache.get(key)
+    
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      // 更新访问统计
+      cached.accessCount++
+      cached.lastAccessed = Date.now()
+      this.cacheStats.hits++
+      
+      // 将访问的项移到最后（LRU策略）
+      this.queryCache.delete(key)
+      this.queryCache.set(key, cached)
+      
       return cached.data as T
     }
+    
+    // 缓存未命中
+    if (cached) {
+      this.queryCache.delete(key)
+      this.cacheStats.memoryUsage -= cached.size
+      this.cacheStats.totalSize = Math.max(0, this.cacheStats.totalSize - cached.size)
+    }
+    
+    this.cacheStats.misses++
     return null
   }
 
-  private setCachedResult(key: string, data: any): void {
-    // 如果缓存已满，删除最旧的条目
-    if (this.queryCache.size >= this.MAX_CACHE_SIZE) {
-      const oldestKey = this.queryCache.keys().next().value
-      if (oldestKey) {
-        this.queryCache.delete(oldestKey)
-      }
+  private setCachedResult<T>(key: string, data: T): void {
+    const size = this.estimateDataSize(data)
+    
+    // 如果新数据过大，跳过缓存
+    if (size > this.MAX_MEMORY_USAGE / 2) {
+      return
     }
     
-    this.queryCache.set(key, {
-      data,
-      timestamp: Date.now()
-    })
-  }
-
-  private cleanExpiredCache(): void {
-    const now = Date.now()
-    for (const [key, value] of this.queryCache.entries()) {
-      if (now - value.timestamp >= this.CACHE_TTL) {
-        this.queryCache.delete(key)
-      }
+    // 内存检查，必要时淘汰
+    this.evictCacheByMemory(size)
+    
+    const cacheEntry = {
+      data: data as unknown,
+      timestamp: Date.now(),
+      accessCount: 0,
+      lastAccessed: Date.now(),
+      size
     }
+    
+    this.queryCache.set(key, cacheEntry)
+    this.cacheStats.totalSize += size
+    this.cacheStats.memoryUsage += size
   }
 
-  private invalidateCache(): void {
-    this.queryCache.clear()
+  private estimateDataSize(data: unknown): number {
+    try {
+      return JSON.stringify(data).length
+    } catch {
+      return 0
+    }
   }
 
   /**
-   * 关闭数据库连接
+   * 清理过期缓存并维护统计 */
+  private cleanExpiredCache(): void {
+    if (this.queryCache.size === 0) return
+    const now = Date.now()
+    for (const [key, entry] of this.queryCache.entries()) {
+      if (now - entry.timestamp >= this.CACHE_TTL) {
+        this.queryCache.delete(key)
+        this.cacheStats.totalSize = Math.max(0, this.cacheStats.totalSize - entry.size)
+        this.cacheStats.memoryUsage = Math.max(0, this.cacheStats.memoryUsage - entry.size)
+      }
+    }
+  }
+
+  getCacheStats() {
+
+    const hitRate = this.cacheStats.hits + this.cacheStats.misses > 0 
+      ? (this.cacheStats.hits / (this.cacheStats.hits + this.cacheStats.misses)) * 100 
+      : 0
+    
+    return {
+      ...this.cacheStats,
+      hitRate: Math.round(hitRate * 100) / 100,
+      memoryUsageMB: Math.round(this.cacheStats.memoryUsage / 1024 / 1024 * 100) / 100,
+      maxMemoryMB: Math.round(this.MAX_MEMORY_USAGE / 1024 / 1024 * 100) / 100,
+      cacheSize: this.queryCache.size,
+      maxCacheSize: this.MAX_CACHE_SIZE
+    }
+  }
+  
+  /**
+   * 重置缓存统计
+   */
+  resetCacheStats(): void {
+    this.cacheStats = {
+      hits: 0,
+      misses: 0,
+      evictions: 0,
+      memoryUsage: this.cacheStats.memoryUsage, // 保留当前内存使用
+      totalSize: this.queryCache.size // 保留当前缓存大小
+    }
+  }
+  
+  /**
+   * 使缓存失效：用于数据变更后清理相关缓存
+   */
+  private invalidateCache(): void {
+    if (this.queryCache.size === 0) return
+    // 释放全部缓存并重置统计
+    this.queryCache.clear()
+    this.cacheStats.totalSize = 0
+    this.cacheStats.memoryUsage = 0
+  }
+
+  /**
+   * 根据即将写入的数据大小执行内存驱逐（LRU）
+   */
+  private evictCacheByMemory(incomingSize: number): void {
+    // 简化策略：按照 lastAccessed（LRU）驱逐，直到有足够空间
+    // 注意：这里使用 totalSize 来近似内存占用
+    const maxTotalSize = this.MAX_MEMORY_USAGE
+    let currentTotal = this.cacheStats.totalSize
+  
+    if (currentTotal + incomingSize <= maxTotalSize && this.queryCache.size < this.MAX_CACHE_SIZE) {
+      return
+    }
+  
+    // 构造按 lastAccessed 排序的键列表
+    const entries = Array.from(this.queryCache.entries())
+    entries.sort((a, b) => a[1].lastAccessed - b[1].lastAccessed)
+  
+    for (const [key, entry] of entries) {
+      this.queryCache.delete(key)
+      currentTotal -= entry.size
+      this.cacheStats.memoryUsage = Math.max(0, this.cacheStats.memoryUsage - entry.size)
+      this.cacheStats.evictions++
+      if (currentTotal + incomingSize <= maxTotalSize || this.queryCache.size <= Math.max(0, this.MAX_CACHE_SIZE - 1)) {
+        break
+      }
+    }
+  
+    this.cacheStats.totalSize = Math.max(0, currentTotal)
+  }
+
+  /**
+   * 预热缓存
+   * 在应用启动时预加载常用数据
+   */
+  async warmupCache(): Promise<void> {
+
+    try {
+      // 预加载统计数据
+      this.getStats()
+      
+      // 预加载今日到期词汇
+      this.getDueWords(50)
+      
+      // 预加载领域统计
+      this.getDomainStats()
+      
+      console.log('缓存预热完成')
+    } catch (error) {
+      console.warn('缓存预热失败:', error)
+    }
+  }
+
+  /**
+   * 记录查询性能统计
+   */
+  private recordQueryPerformance(queryName: string, executionTime: number): void {
+    if (!this.ENABLE_QUERY_MONITORING) return
+
+    const stats = this.queryStats.get(queryName) || {
+      count: 0,
+      totalTime: 0,
+      avgTime: 0,
+      slowQueries: 0
+    }
+
+    stats.count++
+    stats.totalTime += executionTime
+    stats.avgTime = stats.totalTime / stats.count
+    
+    if (executionTime > this.SLOW_QUERY_THRESHOLD) {
+      stats.slowQueries++
+      console.warn(`慢查询检测: ${queryName} 耗时 ${executionTime}ms`)
+    }
+
+    this.queryStats.set(queryName, stats)
+  }
+
+  /**
+   * 获取查询性能统计
+   */
+  getQueryStats(): Map<string, { count: number; totalTime: number; avgTime: number; slowQueries: number }> {
+    return new Map(this.queryStats)
+  }
+
+  /**
+   * 重置查询性能统计
+   */
+  resetQueryStats(): void {
+    this.queryStats.clear()
+  }
+
+  /**
+   * 分析查询计划（SQLite EXPLAIN QUERY PLAN）
+   */
+  analyzeQuery(sql: string, params: unknown[] = []): Array<Record<string, unknown>> {
+    try {
+      const explainStmt = this.db.prepare(`EXPLAIN QUERY PLAN ${sql}`)
+      const rows = explainStmt.all(...params) as Array<Record<string, unknown>>
+      if (this.ENABLE_QUERY_MONITORING) {
+        this.recordQueryPerformance('analyzeQuery', rows.length)
+      }
+      return rows
+    } catch (error) {
+      console.error('查询计划分析失败:', error)
+      return []
+    }
+  }
+
+  /**
+   * 初始化连接池
+   */
+  private initConnectionPool(): void {
+    // 启动连接池清理定时器
+    this.connectionPool.cleanupTimer = setInterval(() => {
+      this.cleanupIdleConnections()
+    }, DatabaseManager.CONNECTION_POOL_CONFIG.checkInterval)
+  }
+  
+  /**
+   * 清理空闲连接
+   */
+  private cleanupIdleConnections(): void {
+    const now = Date.now()
+    const idleTimeout = DatabaseManager.CONNECTION_POOL_CONFIG.idleTimeout
+    
+    this.connectionPool.connections = this.connectionPool.connections.filter(conn => {
+      const lastUsed = this.connectionPool.lastUsed.get(conn) || 0
+      const isIdle = now - lastUsed > idleTimeout
+      const isActive = this.connectionPool.activeConnections.has(conn)
+      
+      if (isIdle && !isActive && conn !== this.db) {
+        try {
+          conn.close()
+          this.connectionPool.lastUsed.delete(conn)
+          return false
+        } catch (error) {
+          console.warn('关闭空闲连接失败:', error)
+          return true
+        }
+      }
+      
+      return true
+    })
+  }
+  
+
+  /**
+   * 启动健康监控
+   */
+  private startHealthMonitoring(): void {
+    setInterval(() => {
+      this.checkDatabaseHealth()
+    }, 60000) // 每分钟检查一次
+  }
+  
+  /**
+   * 检查数据库健康状态
+   */
+  private async checkDatabaseHealth(): Promise<void> {
+    try {
+      const startTime = Date.now()
+      
+      // 执行简单的健康检查查询
+      const result = this.db.prepare('SELECT 1 as health_check').get()
+      
+      const responseTime = Date.now() - startTime
+      
+      if (result && responseTime < 1000) {
+        this.healthStatus.isHealthy = true
+        this.healthStatus.errorCount = 0
+        this.healthStatus.lastError = null
+      } else {
+        this.healthStatus.isHealthy = false
+        this.healthStatus.errorCount++
+      }
+      
+      this.healthStatus.lastCheck = Date.now()
+      
+    } catch (error) {
+      this.healthStatus.isHealthy = false
+      this.healthStatus.errorCount++
+      this.healthStatus.lastError = error as Error
+      this.healthStatus.lastCheck = Date.now()
+      
+      console.error('数据库健康检查失败:', error)
+      
+      // 如果连续失败多次，尝试重新初始化
+      if (this.healthStatus.errorCount >= 3) {
+        console.warn('数据库连续健康检查失败，尝试重新初始化...')
+        try {
+          this.reinitializeDatabase()
+        } catch (reinitError) {
+          console.error('数据库重新初始化失败:', reinitError)
+        }
+      }
+    }
+  }
+  
+  /**
+   * 重新初始化数据库
+   */
+  private reinitializeDatabase(): void {
+    try {
+      // 关闭现有连接
+      if (this.db) {
+        this.db.close()
+      }
+      
+      // 清理连接池
+      this.connectionPool.connections.forEach(conn => {
+        try {
+          conn.close()
+        } catch (error) {
+          console.warn('关闭连接池连接失败:', error)
+        }
+      })
+      
+      this.connectionPool.connections = []
+      this.connectionPool.activeConnections.clear()
+      this.connectionPool.lastUsed.clear()
+      
+      // 重新初始化
+      this.db = this.initializeDatabase()
+      
+      this.healthStatus.errorCount = 0
+      this.healthStatus.lastError = null
+      
+      console.log('数据库重新初始化成功')
+      
+    } catch (error) {
+      console.error('数据库重新初始化失败:', error)
+      throw error
+    }
+  }
+  
+  /**
+   * 获取数据库健康状态
+   */
+  getHealthStatus() {
+    return {
+      ...this.healthStatus,
+      connectionPool: {
+        totalConnections: this.connectionPool.connections.length,
+        activeConnections: this.connectionPool.activeConnections.size,
+        idleConnections: this.connectionPool.connections.length - this.connectionPool.activeConnections.size
+      }
+    }
+  }
+  
+  /**
+   * 关闭数据库连接和连接池
    */
   close(): void {
+    // 清理定时器
+    if (this.connectionPool.cleanupTimer) {
+      clearInterval(this.connectionPool.cleanupTimer)
+    }
+    
+    // 关闭所有连接
+    this.connectionPool.connections.forEach(conn => {
+      try {
+        conn.close()
+      } catch (error) {
+        console.warn('关闭连接失败:', error)
+      }
+    })
+    
+    // 关闭主连接
     if (this.db) {
       try {
         this.queryCache.clear()
@@ -882,6 +1619,11 @@ export class DatabaseManager {
         // 数据库关闭失败，忽略错误
       }
     }
+    
+    // 清理连接池状态
+    this.connectionPool.connections = []
+    this.connectionPool.activeConnections.clear()
+    this.connectionPool.lastUsed.clear()
   }
 
   /**

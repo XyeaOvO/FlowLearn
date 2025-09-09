@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect } from 'react'
+import { useRef, useCallback, useState, useEffect, useMemo } from 'react'
 import type { Word } from '../../../shared/types'
 
 /**
@@ -238,15 +238,23 @@ export function useLazyLoad<T>(loadFn: () => Promise<T>, dependencies: unknown[]
     }
   }, [loadFn, loading])
 
+  // 将依赖数组转换为稳定的 key，避免将非常量数组直接传给 useEffect
+  const depsKey = useMemo(() => {
+    try {
+      return JSON.stringify(dependencies)
+    } catch {
+      return String((dependencies as unknown[] | undefined)?.length ?? 0)
+    }
+  }, [dependencies])
+
   // 当依赖变化时重置状态
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (loadedRef.current) {
       setData(null)
       setError(null)
       loadedRef.current = false
     }
-  }, dependencies)
+  }, [depsKey])
   
   /**
    * 重置加载状态

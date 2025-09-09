@@ -24,6 +24,8 @@ interface VirtualizedWordListProps {
   onToggleSelection?: (id: string) => void
   /** 自定义渲染单个列表项的函数 */
   renderItem?: (word: Word) => React.ReactNode
+  /** 是否显示性能统计信息 */
+  showStats?: boolean
 }
 
 /** 默认列表项高度 */
@@ -47,16 +49,21 @@ export default function VirtualizedWordList({
   selectionMode = false,
   selectedIds = [],
   onToggleSelection,
-  renderItem
+  renderItem,
+  showStats = process.env.NODE_ENV === 'development'
 }: VirtualizedWordListProps) {
-  // 使用虚拟滚动Hook获取可见项和滚动相关属性
+  // 使用增强的虚拟滚动Hook获取可见项和滚动相关属性
   const {
     visibleItems,
     totalHeight,
     offsetY,
     handleScroll,
-    visibleRange
-  } = useVirtualScroll(words, itemHeight, containerHeight)
+    stats
+  } = useVirtualScroll(words, itemHeight, containerHeight, {
+    bufferSize: 5, // 预加载5个项目
+    throttleDelay: 16, // 60fps滚动
+    enablePerfMonitoring: showStats // 由外部开关控制是否启用性能监控
+  })
 
   /**
    * 默认的列表项渲染函数
@@ -178,7 +185,32 @@ export default function VirtualizedWordList({
         </div>
       </div>
       
-      {/* 性能统计信息（开发模式） - 已移除以避免滚动时位置问题 */}
+      {/* 性能统计信息（可配置开关） */}
+      {stats && showStats && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 10,
+            right: 10,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            color: 'white',
+            padding: '8px 12px',
+            borderRadius: 6,
+            fontSize: 11,
+            fontFamily: 'monospace',
+            zIndex: 1000,
+            pointerEvents: 'none'
+          }}
+        >
+          <div>总项目: {stats.totalItems}</div>
+          <div>可见项目: {stats.visibleItems}</div>
+          <div>渲染时间: {stats.renderTime.toFixed(2)}ms</div>
+          <div>滚动事件: {stats.scrollEvents}</div>
+          <div>缓存命中: {stats.cacheHits}</div>
+          <div>缓存未命中: {stats.cacheMisses}</div>
+          <div>命中率: {stats.cacheHits + stats.cacheMisses > 0 ? ((stats.cacheHits / (stats.cacheHits + stats.cacheMisses)) * 100).toFixed(1) : 0}%</div>
+        </div>
+      )}
     </div>
   )
 }

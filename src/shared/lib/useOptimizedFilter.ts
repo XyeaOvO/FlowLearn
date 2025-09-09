@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useEffect } from 'react'
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react'
 import type { Word } from '../../../shared/types'
 import type { VocabFilter } from '../../features/vocab/filters'
 
@@ -159,14 +159,42 @@ export function useDebounce<T>(value: T, delay: number = 300): T {
  * 虚拟滚动Hook，用于处理大量数据的渲染
  */
 /**
- * 虚拟滚动Hook
+ * 虚拟滚动Hook配置选项
+ */
+interface VirtualScrollOptions {
+  /** 预加载缓冲区大小（额外渲染的项目数量） */
+  bufferSize?: number
+  /** 是否启用动态高度计算 */
+  dynamicHeight?: boolean
+  /** 滚动节流延迟（毫秒） */
+  throttleDelay?: number
+  /** 是否启用性能监控 */
+  enablePerfMonitoring?: boolean
+}
+
+/**
+ * 虚拟滚动性能统计
+ */
+interface VirtualScrollStats {
+  totalItems: number
+  visibleItems: number
+  renderTime: number
+  scrollEvents: number
+  cacheHits: number
+  cacheMisses: number
+}
+
+/**
+ * 增强的虚拟滚动Hook
  * 
  * 用于处理大量数据的高性能渲染，只渲染可见区域的项目
  * 显著减少DOM节点数量，提升滚动性能
+ * 新增功能：预加载缓冲区、动态高度、性能监控、智能缓存
  * 
  * @param items - 所有数据项数组
  * @param itemHeight - 每个项目的固定高度（像素）
  * @param containerHeight - 容器的高度（像素）
+ * @param options - 配置选项
  * @returns 虚拟滚动相关的状态和方法
  * 
  * @example
@@ -176,8 +204,12 @@ export function useDebounce<T>(value: T, delay: number = 300): T {
  *   totalHeight,
  *   offsetY,
  *   handleScroll,
- *   visibleRange
- * } = useVirtualScroll(words, 60, 400)
+ *   visibleRange,
+ *   stats
+ * } = useVirtualScroll(words, 60, 400, {
+ *   bufferSize: 5,
+ *   enablePerfMonitoring: true
+ * })
  * 
  * return (
  *   <div style={{ height: containerHeight, overflow: 'auto' }} onScroll={handleScroll}>
@@ -190,34 +222,249 @@ export function useDebounce<T>(value: T, delay: number = 300): T {
  * )
  * ```
  */
-export function useVirtualScroll<T>(items: T[], itemHeight: number, containerHeight: number) {
+export function useVirtualScroll<T>(
+  items: T[], 
+  itemHeight: number, 
+  containerHeight: number,
+  options: VirtualScrollOptions = {}
+) {
+  const {
+    bufferSize = 3,
+    dynamicHeight = false,
+    throttleDelay = 16,
+    enablePerfMonitoring = false
+  } = options
+
   const [scrollTop, setScrollTop] = useState(0)
+  const [stats, setStats] = useState<VirtualScrollStats>({
+    totalItems: 0,
+    visibleItems: 0,
+    renderTime: 0,
+    scrollEvents: 0,
+    cacheHits: 0,
+    cacheMisses: 0
+  })
+  
+  // 缓存计算结果
+  const cacheRef = useRef<Map<string, unknown>>(new Map())
+  const heightCacheRef = useRef(new Map<number, number>())
 
+  // 节流滚动处理（优化底部滚动）
+  const throttledSetScrollTop = useMemo(
+    () =>
+      throttle((newScrollTop: number) => {
+        // 限制滚动范围，避免超出边界
+        const maxScrollTop = Math.max(0, items.length * itemHeight - containerHeight)
+        const clampedScrollTop = Math.min(newScrollTop, maxScrollTop)
+        
+        setScrollTop(clampedScrollTop)
+        if (enablePerfMonitoring) {
+          setStats(prev => ({ ...prev, scrollEvents: prev.scrollEvents + 1 }))
+        }
+      }, throttleDelay),
+    [throttleDelay, enablePerfMonitoring, items.length, itemHeight, containerHeight]
+  )
+
+  // 计算可见范围（带缓冲区）
   const visibleRange = useMemo(() => {
-    const startIndex = Math.floor(scrollTop / itemHeight)
-    const endIndex = Math.min(
-      startIndex + Math.ceil(containerHeight / itemHeight) + 1,
-      items.length
-    )
-    return { startIndex, endIndex }
-  }, [scrollTop, itemHeight, containerHeight, items.length])
+    const startTime = enablePerfMonitoring ? performance.now() : 0
+    
+    // 优化缓存键，减少精度以提高命中率
+    const roundedScrollTop = Math.floor(scrollTop / 10) * 10
+    const cacheKey = `range-${roundedScrollTop}-${itemHeight}-${containerHeight}-${items.length}-${bufferSize}`
+    
+    if (cacheRef.current.has(cacheKey)) {
+      if (enablePerfMonitoring) {
+        setStats(prev => ({ ...prev, cacheHits: prev.cacheHits + 1 }))
+      }
+      return cacheRef.current.get(cacheKey) as {
+        startIndex: number
+        endIndex: number
+        visibleCount: number
+        isNearBottom: boolean
+      }
+    }
 
+    const visibleCount = Math.ceil(containerHeight / itemHeight)
+    const rawStartIndex = Math.floor(scrollTop / itemHeight)
+    
+    // 优化边界处理，避免底部卡顿
+    const startIndex = Math.max(0, rawStartIndex - bufferSize)
+    const rawEndIndex = rawStartIndex + visibleCount + bufferSize * 2
+    const endIndex = Math.min(items.length, rawEndIndex)
+    
+    // 当接近底部时，确保不会超出边界
+    const adjustedEndIndex = Math.min(endIndex, items.length)
+    const adjustedStartIndex = Math.max(0, Math.min(startIndex, items.length - visibleCount - bufferSize))
+    
+    const result = { 
+      startIndex: adjustedStartIndex, 
+      endIndex: adjustedEndIndex, 
+      visibleCount,
+      isNearBottom: rawEndIndex >= items.length - bufferSize
+    }
+    
+    // 优化缓存管理，使用LRU策略
+    if (cacheRef.current.size > 30) {
+      const keys = Array.from(cacheRef.current.keys())
+      // 删除最旧的一半缓存
+      for (let i = 0; i < Math.floor(keys.length / 2); i++) {
+        cacheRef.current.delete(keys[i])
+      }
+    }
+    
+    cacheRef.current.set(cacheKey, result)
+    
+    if (enablePerfMonitoring) {
+      const endTime = performance.now()
+      setStats(prev => ({
+        ...prev,
+        cacheMisses: prev.cacheMisses + 1,
+        renderTime: endTime - startTime
+      }))
+    }
+    
+    return result
+  }, [scrollTop, itemHeight, containerHeight, items.length, bufferSize, enablePerfMonitoring])
+
+  // 获取可见项目（优化边界处理）
   const visibleItems = useMemo(() => {
-    return items.slice(visibleRange.startIndex, visibleRange.endIndex)
-  }, [items, visibleRange])
+    // 确保索引在有效范围内
+    const safeStartIndex = Math.max(0, Math.min(visibleRange.startIndex, items.length))
+    const safeEndIndex = Math.max(safeStartIndex, Math.min(visibleRange.endIndex, items.length))
+    
+    const result = items.slice(safeStartIndex, safeEndIndex)
+    
+    if (enablePerfMonitoring) {
+      setStats(prev => ({
+        ...prev,
+        totalItems: items.length,
+        visibleItems: result.length
+      }))
+    }
+    
+    return result
+  }, [items, visibleRange, enablePerfMonitoring])
 
-  const totalHeight = items.length * itemHeight
-  const offsetY = visibleRange.startIndex * itemHeight
+  // 计算总高度（支持动态高度，优化性能）
+  const totalHeight = useMemo(() => {
+    if (!dynamicHeight) {
+      return items.length * itemHeight
+    }
+    
+    // 动态高度计算（优化版本）
+    const cacheKey = `totalHeight-${items.length}-${itemHeight}`
+    if (cacheRef.current.has(cacheKey)) {
+      return cacheRef.current.get(cacheKey) as number
+    }
+    
+    let total = 0
+    const cachedHeights = heightCacheRef.current
+    
+    // 批量计算，减少循环开销
+    for (let i = 0; i < items.length; i++) {
+      total += cachedHeights.get(i) || itemHeight
+    }
+    
+    cacheRef.current.set(cacheKey, total)
+    return total
+  }, [items.length, itemHeight, dynamicHeight])
 
+  // 计算偏移量（优化性能）
+  const offsetY = useMemo(() => {
+    if (!dynamicHeight) {
+      return visibleRange.startIndex * itemHeight
+    }
+    
+    // 动态高度偏移计算（优化版本）
+    const cacheKey = `offset-${visibleRange.startIndex}-${itemHeight}`
+    if (cacheRef.current.has(cacheKey)) {
+      return cacheRef.current.get(cacheKey) as number
+    }
+    
+    let offset = 0
+    const cachedHeights = heightCacheRef.current
+    const startIndex = visibleRange.startIndex
+    
+    // 批量计算偏移量
+    for (let i = 0; i < startIndex; i++) {
+      offset += cachedHeights.get(i) || itemHeight
+    }
+    
+    cacheRef.current.set(cacheKey, offset)
+    return offset
+  }, [visibleRange.startIndex, itemHeight, dynamicHeight])
+
+  // 滚动处理函数
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop)
+    const newScrollTop = e.currentTarget.scrollTop
+    throttledSetScrollTop(newScrollTop)
+  }, [throttledSetScrollTop])
+
+  // 更新项目高度（用于动态高度）
+  const updateItemHeight = useCallback((index: number, height: number) => {
+    if (dynamicHeight) {
+      heightCacheRef.current.set(index, height)
+    }
+  }, [dynamicHeight])
+
+  // 清理缓存
+  const clearCache = useCallback(() => {
+    cacheRef.current.clear()
+    heightCacheRef.current.clear()
+    setStats({
+      totalItems: 0,
+      visibleItems: 0,
+      renderTime: 0,
+      scrollEvents: 0,
+      cacheHits: 0,
+      cacheMisses: 0
+    })
   }, [])
+
+  // 清理效果
+  useEffect(() => {
+    return () => {
+      clearCache()
+    }
+  }, [clearCache])
 
   return {
     visibleItems,
     totalHeight,
     offsetY,
     handleScroll,
-    visibleRange
+    visibleRange,
+    updateItemHeight,
+    clearCache,
+    stats: enablePerfMonitoring ? stats : null
+  }
+}
+
+/**
+ * 节流函数
+ */
+function throttle<TArgs extends unknown[]>(
+  func: (...args: TArgs) => void,
+  delay: number
+): (...args: TArgs) => void {
+  let timeoutId: NodeJS.Timeout | null = null
+  let lastExecTime = 0
+  
+  return (...args: TArgs) => {
+    const currentTime = Date.now()
+    
+    if (currentTime - lastExecTime > delay) {
+      func(...args)
+      lastExecTime = currentTime
+    } else {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+      timeoutId = setTimeout(() => {
+        func(...args)
+        lastExecTime = Date.now()
+      }, delay - (currentTime - lastExecTime))
+    }
   }
 }
