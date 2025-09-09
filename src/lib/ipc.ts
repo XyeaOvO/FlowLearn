@@ -1,5 +1,27 @@
 import type { Word, Settings, AIModelConfig, AIProcessingStatus, BasketAddResult, AIModelTestResult, BackupListResult, ImportDBResult, BackupNowResult, BackupRestoreResult, ResetAllResult, DeleteWordResult } from '../../shared/types'
 
+// 在开发环境中存储设置的临时变量
+let mockSettings: any = {
+  aiEnabled: false,
+  triggerThreshold: 5,
+  promptTemplate: '',
+  filterMinWords: 1,
+  filterMaxWords: 10,
+  filterIgnoreNewlines: false,
+  filterRegex: '',
+  globalShortcut: '',
+  ttsEnabled: false,
+  ttsProvider: 'system',
+  ttsVolcAppId: '',
+  ttsVolcAccessKey: '',
+  ttsVolcSecretKey: '',
+  aiModels: [],
+  dailyGoal: 20,
+  theme: 'system',
+  locale: 'zh',
+  closeAction: 'ask'
+}
+
 export async function ipcInvoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T> {
   // 检查是否在Electron环境中
   if (typeof window !== 'undefined' && window.api && window.api.invoke) {
@@ -16,23 +38,15 @@ export async function ipcInvoke<T = unknown>(channel: string, ...args: unknown[]
     return Promise.resolve([] as T) // 篮子也返回空数组
   }
   if (channel === 'settings:get') {
-    // 返回默认设置
-    return Promise.resolve({
-      aiEnabled: false,
-      triggerThreshold: 5,
-      promptTemplate: '',
-      filterMinWords: 1,
-      filterMaxWords: 10,
-      filterIgnoreNewlines: false,
-      filterRegex: '',
-      globalShortcut: '',
-      ttsEnabled: false,
-      ttsProvider: 'system',
-      ttsVolcAppId: '',
-      ttsVolcAccessKey: '',
-      ttsVolcSecretKey: '',
-      aiModels: []
-    } as T)
+    // 返回模拟设置
+    return Promise.resolve(mockSettings as T)
+  }
+  if (channel === 'settings:set') {
+    // 在开发环境中更新模拟设置
+    const newSettings = args[0] as Partial<typeof mockSettings>
+    mockSettings = { ...mockSettings, ...newSettings }
+    console.log('Mock settings updated:', mockSettings)
+    return Promise.resolve({ success: true } as T)
   }
   
   return Promise.resolve({} as T)
@@ -57,6 +71,7 @@ export const dbBulkUpdate = (ids: string[], changes: Partial<Word>) => ipcInvoke
 export const dbBulkDelete = (ids: string[]) => ipcInvoke('db:bulkDelete', ids)
 export const dbBulkRestore = (ids: string[]) => ipcInvoke('db:bulkRestore', ids)
 export const dbRebuild = () => ipcInvoke<{ ok: boolean; message?: string; error?: string }>('db:rebuild')
+export const dbClearAll = () => ipcInvoke<{ ok: boolean; error?: string }>('db:clearAll')
 
 // Review (FSRS)
 export type ReviewGrade = 'again' | 'hard' | 'good' | 'easy'

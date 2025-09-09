@@ -4,7 +4,7 @@ import { useEffect, useCallback } from 'react'
 import type { Word, Settings } from '../../../shared/types'
 import { toDateInputValue, formatDate } from '../../lib/date'
 import { useTranslation } from 'react-i18next'
-import { VolumeIcon, EditIcon, RobotIcon, TargetIcon } from '../../shared/components/Icon'
+import { VolumeIcon, EditIcon } from '../../shared/components/Icon'
 import { NoSelectionState } from '../../shared/components/EmptyState'
 
 export default function DetailPane({

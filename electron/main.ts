@@ -280,20 +280,20 @@ function initializeDatabase() {
   try {
     dbManager = getDatabaseManager(sqliteDbPath)
     
-    // 检查是否需要从JSON迁移数据
-    if (fs.existsSync(dbFile)) {
-      console.log('Detected old JSON database file, starting migration...')
-      dbManager.migrateFromJSON(dbFile).then(result => {
-        console.log(`Data migration completed: successfully migrated ${result.migrated} records`)
-        if (result.errors.length > 0) {
-          console.warn('Errors during migration:', result.errors)
-        }
-        // 通知渲染进程数据库已更新
-        win?.webContents.send('db-updated')
-      }).catch(error => {
-        console.error('Data migration failed:', error)
-      })
-    }
+    // 自动迁移已禁用，如需迁移请使用设置页面的导入功能
+    // if (fs.existsSync(dbFile)) {
+    //   console.log('Detected old JSON database file, starting migration...')
+    //   dbManager.migrateFromJSON(dbFile).then(result => {
+    //     console.log(`Data migration completed: successfully migrated ${result.migrated} records`)
+    //     if (result.errors.length > 0) {
+    //       console.warn('Errors during migration:', result.errors)
+    //     }
+    //     // 通知渲染进程数据库已更新
+    //     win?.webContents.send('db-updated')
+    //   }).catch(error => {
+    //     console.error('Data migration failed:', error)
+    //   })
+    // }
   } catch (error) {
     console.error('Database initialization failed:', error)
   }
@@ -1574,7 +1574,12 @@ ipcMain.handle('db:import', async () => {
           addedAt: now,
           reviewStatus: 'new' as const,
           reviewDueDate: now,
-          analysis: ''
+          analysis: '',
+          fsrsDifficulty: 5,
+          fsrsStability: 0.5,
+          fsrsLastReviewedAt: now,
+          fsrsReps: 0,
+          fsrsLapses: 0
         }
         
         dbManager.addWord(wordData)
@@ -1704,7 +1709,20 @@ ipcMain.handle('db:backup:restore', async (_e, specifiedPath?: string) => {
     const raw = fs.readFileSync(chosen!, 'utf-8')
     const arr = JSON.parse(raw)
     if (!Array.isArray(arr)) throw new Error('备份文件格式不正确')
-    writeDB(arr)
+    
+    if (dbManager) {
+      // 使用SQLite数据库恢复
+      // 清空现有数据
+      dbManager.clearAllWords()
+      // 恢复备份数据
+      for (const word of arr) {
+        dbManager.addWord(word)
+      }
+    } else {
+      // 回退到JSON操作
+      writeDB(arr)
+    }
+    
     win?.webContents.send('db-updated')
     return { ok: true }
   } catch (err: any) {
@@ -2378,6 +2396,19 @@ async function startAIProcessing(confirmedWords: string[]) {
 
 ipcMain.handle('db:resetAll', () => resetAllWords())
 ipcMain.handle('db:rebuild', () => rebuildDatabase())
+ipcMain.handle('db:clearAll', async () => {
+  try {
+    if (dbManager) {
+      await dbManager.clearAllWords()
+      // 通知前端数据库已更新
+      win?.webContents.send('db-updated')
+      return { ok: true }
+    }
+    return { ok: false, error: '数据库未初始化' }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : '清空数据库失败' }
+  }
+})
 
 // IPC handlers for AI functionality
 ipcMain.handle('test-ai-model', async (_e, modelConfig: AIModelConfig) => {

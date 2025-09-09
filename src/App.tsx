@@ -175,7 +175,12 @@ function App() {
   const dueWords = useMemo(() => words.filter(w => !((w as Word & { deletedAt?: number }).deletedAt) && w.reviewDueDate !== null && (w.reviewDueDate as number) <= Date.now()), [words])
   const reviewedToday = useMemo(() => {
     const d = new Date(); d.setHours(0,0,0,0)
-    return words.filter(w => !((w as Word & { deletedAt?: number }).deletedAt) && (w.fsrsLastReviewedAt || 0) >= d.getTime()).length
+    return words.filter(w => {
+      if ((w as Word & { deletedAt?: number }).deletedAt) return false
+      if (!w.fsrsLastReviewedAt) return false
+      // 只计算真正复习过的词汇（fsrsReps > 0）且在今天复习的
+      return (w.fsrsReps || 0) > 0 && w.fsrsLastReviewedAt >= d.getTime()
+    }).length
   }, [words])
 
 

@@ -1,4 +1,3 @@
-import React from 'react'
 import { useTheme } from '../contexts/ThemeContext'
 import { SunIcon, MoonIcon, MonitorIcon } from './Icon'
 
@@ -8,7 +7,7 @@ interface ThemeToggleProps {
 }
 
 export default function ThemeToggle({ className = '', showLabel = true }: ThemeToggleProps) {
-  const { theme, actualTheme, setTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
 
   const themes = [
     { value: 'light' as const, label: '浅色', icon: SunIcon },

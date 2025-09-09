@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Settings, AIModelConfig, BackupListResult, BackupNowResult, ExportDBResult, ImportDBResult, BackupRestoreResult, ResetAllResult } from '../../../shared/types'
 import { useTranslation } from 'react-i18next'
-import { exportDB, importDB, backupList, backupNow, backupOpenDir, backupRestore, resetAll, dbRebuild } from '../../lib/ipc'
+import { exportDB, importDB, backupList, backupNow, backupOpenDir, backupRestore, resetAll, dbRebuild, dbClearAll } from '../../lib/ipc'
 import AIModelConfigComponent from './AIModelConfig'
 import { safeAsync } from '../../shared/lib/errorHandler'
 import { SettingsIcon, SearchIcon, RobotIcon, VolumeIcon, DatabaseIcon } from '../../shared/components/Icon'
@@ -702,6 +702,16 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
                  setOpMsg('重建失败')
                }
              }}>重建数据库</button>
+            <button className="btn btn-danger" onClick={async () => {
+               if (!confirm('此操作将永久删除所有词汇数据，无法恢复。确定要清空数据库吗？')) return
+               const result = await safeAsync(() => dbClearAll())
+               if (result) {
+                 const r = result as { ok: boolean; error?: string }
+                 setOpMsg(r?.ok ? '数据库已清空' : `清空失败：${r?.error || '未知错误'}`)
+               } else {
+                 setOpMsg('清空失败')
+               }
+             }}>清空数据库</button>
             <button className="btn btn-danger" onClick={async () => {
                if (!confirm(t('data.resetAllConfirm'))) return
                const result = await safeAsync(() => resetAll())

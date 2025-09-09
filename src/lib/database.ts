@@ -255,7 +255,7 @@ export class DatabaseManager {
             id, term, definition, phonetic, example, domain, addedAt,
             reviewStatus, reviewDueDate, analysis, fsrsDifficulty,
             fsrsStability, fsrsLastReviewedAt, fsrsReps, fsrsLapses, deletedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
 
         for (const word of wordsToMigrate) {
@@ -366,7 +366,7 @@ export class DatabaseManager {
         id, term, definition, phonetic, example, domain, addedAt,
         reviewStatus, reviewDueDate, analysis, fsrsDifficulty,
         fsrsStability, fsrsLastReviewedAt, fsrsReps, fsrsLapses
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     stmt.run(
@@ -744,6 +744,21 @@ export class DatabaseManager {
     }
     
     return result.changes > 0
+  }
+
+  /**
+   * 清空所有词汇数据
+   */
+  clearAllWords(): number {
+    const stmt = this.db.prepare('DELETE FROM words')
+    const result = stmt.run()
+    
+    if (result.changes > 0) {
+      // 清除相关缓存
+      this.invalidateCache()
+    }
+    
+    return result.changes
   }
 
   /**

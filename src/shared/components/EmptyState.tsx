@@ -1,5 +1,5 @@
 import React from 'react'
-import { BookIcon, SearchIcon, PlusIcon, InfoIcon, WarningIcon, CheckIcon } from './Icon'
+import { BookIcon, SearchIcon, InfoIcon, WarningIcon, CheckIcon } from './Icon'
 
 type EmptyStateType = 'no-data' | 'no-results' | 'no-selection' | 'error' | 'success' | 'loading'
 
