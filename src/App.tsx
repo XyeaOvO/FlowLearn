@@ -6,6 +6,10 @@ import './styles/detail.css'
 import './styles/forms.css'
 import './styles/review.css'
 import './styles/settings.css'
+import './styles/themes.css'
+import './styles/empty-state.css'
+import './styles/toast.css'
+import './styles/confirm-dialog.css'
 import { useTranslation } from 'react-i18next'
 import type { Word, Settings } from '@shared/types'
 import { dbList, dbUpdate, dbDelete, getSettings as ipcGetSettings, getBasket, triggerBasket, importFromClipboard, dbBulkDelete, dbBulkRestore, dbBulkUpdate, dbDeletedList, startAIProcessing } from '@lib/ipc'
@@ -22,6 +26,10 @@ import { useTTS } from './shared/hooks/useTTS'
 import { useFilters } from './shared/hooks/useFilters'
 import { useMultiSelect } from './shared/hooks/useMultiSelect'
 import { useResizable } from './shared/hooks/useResizable'
+import { ThemeProvider } from './shared/contexts/ThemeContext'
+import { ThemeToggleButton } from './shared/components/ThemeToggle'
+import { ToastProvider } from './shared/components/Toast'
+import { ConfirmProvider } from './shared/components/ConfirmDialog'
 
 function App() {
   const { t, i18n } = useTranslation()
@@ -170,7 +178,10 @@ function App() {
 
 
   return (
-    <div className="layout">
+    <ThemeProvider>
+      <ToastProvider>
+        <ConfirmProvider>
+          <div className="layout">
       <div className="sidebar">
         <div className="sidebar-header">
           <div className="brand">
@@ -292,6 +303,7 @@ function App() {
             {tab === 'settings' && t('nav.settings')}
           </div>
           <div className="topbar-actions">
+            <ThemeToggleButton className="theme-toggle-topbar" />
             {settings && (
               <div className="progress-widget">
                 <div className="progress-stats">
@@ -427,8 +439,11 @@ function App() {
         onClose={() => setShowAIProcessingWindow(false)}
       />
       
-      <AIProcessingStatus />
-    </div>
+          <AIProcessingStatus />
+          </div>
+        </ConfirmProvider>
+      </ToastProvider>
+    </ThemeProvider>
   )
 }
  

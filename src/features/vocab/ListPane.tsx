@@ -4,6 +4,10 @@ import { type VocabFilter } from './filters'
 import { useTranslation } from 'react-i18next'
 import { useOptimizedFilter } from '../../shared/lib/useOptimizedFilter'
 import VirtualizedWordList from '../../shared/components/VirtualizedWordList'
+import { SearchIcon, SettingsIcon, TrashIcon, RefreshIcon, FilterIcon } from '../../shared/components/Icon'
+import { NoDataState, NoResultsState } from '../../shared/components/EmptyState'
+import { useToastActions } from '../../shared/components/Toast'
+import { useConfirmActions } from '../../shared/components/ConfirmDialog'
 
 export default function ListPane({
   words,
@@ -57,6 +61,8 @@ export default function ListPane({
   const [showFilters, setShowFilters] = useState(false)
   const listContentRef = useRef<HTMLDivElement>(null)
   const [containerHeight, setContainerHeight] = useState(400)
+  const { showSuccess, showError } = useToastActions()
+  const { confirmBulkDelete } = useConfirmActions()
 
   const toggleId = (id: string) => {
     if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(x => x !== id))
@@ -89,7 +95,7 @@ export default function ListPane({
         {/* Primary Search Bar */}
         <div className="search-section">
           <div className="search-input-container">
-            <span className="search-icon">🔍</span>
+            <SearchIcon size={16} className="search-icon" />
             <input 
               className="search-input" 
               placeholder={t('list.searchPlaceholder')} 
@@ -104,7 +110,7 @@ export default function ListPane({
             className={`filter-toggle ${Object.values(filter).some(v => v !== '' && v !== 'all' && v !== false) ? 'active' : ''}`}
             onClick={() => setShowFilters(!showFilters)}
           >
-            <span className="filter-icon">⚙️</span>
+            <SettingsIcon size={16} className="filter-icon" />
             筛选
             {Object.values(filter).some(v => v !== '' && v !== 'all' && v !== false) && (
               <span className="filter-badge">•</span>
@@ -242,7 +248,7 @@ export default function ListPane({
                   if (ui.setShowDeleted) ui.setShowDeleted(false)
                 }}
               >
-                🗑️ 清除筛选
+                <TrashIcon size={16} /> 清除筛选
               </button>
             </div>
           </div>
@@ -311,17 +317,37 @@ export default function ListPane({
 
                   <button 
                     className="action-delete"
-                    onClick={() => onBulkDelete(selectedIds)}
+                    onClick={() => {
+                      confirmBulkDelete(selectedIds.length, async () => {
+                        try {
+                          await onBulkDelete(selectedIds)
+                          showSuccess('批量删除成功', `已删除 ${selectedIds.length} 个单词`)
+                          setSelectedIds([])
+                          setSelectionMode(false)
+                        } catch (error) {
+                          showError('批量删除失败', '删除过程中出现错误，请重试')
+                        }
+                      })
+                    }}
                   >
-                    🗑️ 批量删除
+                    <TrashIcon size={16} /> 批量删除
                   </button>
                 </>
               ) : (
                 <button 
                   className="action-restore"
-                  onClick={() => onBulkRestore(selectedIds)}
+                  onClick={async () => {
+                    try {
+                      await onBulkRestore(selectedIds)
+                      showSuccess('批量恢复成功', `已恢复 ${selectedIds.length} 个单词`)
+                      setSelectedIds([])
+                      setSelectionMode(false)
+                    } catch (error) {
+                      showError('批量恢复失败', '恢复过程中出现错误，请重试')
+                    }
+                  }}
                 >
-                  ↩️ 批量恢复
+                  <RefreshIcon size={16} /> 批量恢复
                 </button>
               )}
             </div>
@@ -330,11 +356,24 @@ export default function ListPane({
       )}
       <div className="list-content" ref={listContentRef}>
         {filtered.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">📚</div>
-            <div className="empty-state-title">{t('list.emptyTitle')}</div>
-            <div className="empty-state-description">{t('list.emptyDesc')}</div>
-          </div>
+          words.length === 0 ? (
+            <NoDataState />
+          ) : (
+            <NoResultsState 
+              query={ui.search || (ui.domain && `领域: ${ui.domain}`) || undefined}
+              onClear={() => {
+                ui.setSearch('')
+                ui.setDomain('')
+                ui.setStatus('all')
+                ui.setFrom('')
+                ui.setTo('')
+                ui.setRequireExample(false)
+                ui.setRequirePhonetic(false)
+                ui.setUseRegex(false)
+                ui.setRegex('')
+              }}
+            />
+          )
         ) : (
           <VirtualizedWordList
             words={filtered}

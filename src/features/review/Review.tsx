@@ -4,6 +4,7 @@ import { reviewApply, reviewDue, getSettings as ipcGetSettings, ReviewGrade } fr
 import { useTranslation } from 'react-i18next'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { ArrowLeftIcon, VolumeIcon, ChevronDownIcon, SearchIcon, XIcon, WarningIcon, InfoIcon, CheckIcon } from '../../shared/components/Icon'
 
 export default function Review({ onBack, refresh }: { onBack: () => void; refresh: () => void }) {
   const { t } = useTranslation()
@@ -92,10 +93,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
     <div className="modern-review-container">
       <div className="review-header">
         <button className="back-button" onClick={onBack}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m12 19-7-7 7-7"/>
-            <path d="m19 12H5"/>
-          </svg>
+          <ArrowLeftIcon size={20} />
           {t('review.back')}
         </button>
       </div>
@@ -112,10 +110,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
     <div className="modern-review-container">
       <div className="review-header">
         <button className="back-button" onClick={onBack}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m12 19-7-7 7-7"/>
-            <path d="m19 12H5"/>
-          </svg>
+          <ArrowLeftIcon size={20} />
           {t('review.back')}
         </button>
       </div>
@@ -232,10 +227,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
                 <h1 className="word-term">{current.term}</h1>
                 {reviewSettings?.ttsEnabled && (
                   <button className="tts-button" onClick={speakWord} aria-label="发音">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
-                    </svg>
+                    <VolumeIcon size={24} />
                   </button>
                 )}
               </div>
@@ -248,9 +240,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
             <div className="card-action">
               <button className="reveal-button" onClick={handleShowAnswer}>
                 <span>显示答案</span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 9l6 6 6-6"/>
-                </svg>
+                <ChevronDownIcon size={20} />
               </button>
             </div>
           </div>
@@ -280,10 +270,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
                   className="details-button" 
                   onClick={() => setShowDetails(true)}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="11" cy="11" r="8"/>
-                    <path d="m21 21-4.35-4.35"/>
-                  </svg>
+                  <SearchIcon size={16} />
                   查看详情
                 </button>
               </div>
@@ -295,7 +282,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
                   className="difficulty-btn difficulty-again" 
                   onClick={() => apply('again')}
                 >
-                  <span className="btn-icon">😰</span>
+                  <span className="btn-icon"><WarningIcon size={20} color="#ef4444" /></span>
                   <span className="btn-text">{t('review.again')}</span>
                   <span className="btn-subtitle">需要再学</span>
                 </button>
@@ -304,7 +291,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
                   className="difficulty-btn difficulty-hard" 
                   onClick={() => apply('hard')}
                 >
-                  <span className="btn-icon">😅</span>
+                  <span className="btn-icon"><InfoIcon size={20} color="#f59e0b" /></span>
                   <span className="btn-text">{t('review.hard')}</span>
                   <span className="btn-subtitle">比较困难</span>
                 </button>
@@ -313,7 +300,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
                   className="difficulty-btn difficulty-good" 
                   onClick={() => apply('good')}
                 >
-                  <span className="btn-icon">😊</span>
+                  <span className="btn-icon"><CheckIcon size={20} color="#10b981" /></span>
                   <span className="btn-text">{t('review.good')}</span>
                   <span className="btn-subtitle">还不错</span>
                 </button>
@@ -322,7 +309,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
                   className="difficulty-btn difficulty-easy" 
                   onClick={() => apply('easy')}
                 >
-                  <span className="btn-icon">🤩</span>
+                  <span className="btn-icon"><CheckIcon size={20} color="#3b82f6" /></span>
                   <span className="btn-text">{t('review.easy')}</span>
                   <span className="btn-subtitle">很简单</span>
                 </button>
@@ -342,10 +329,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
                 <div className="details-modal-header">
                   <h2 className="details-modal-title">{word.term}</h2>
                   <button className="details-modal-close" onClick={() => setShowDetails(false)}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/>
-                      <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
+                    <XIcon size={20} />
                   </button>
                 </div>
                 

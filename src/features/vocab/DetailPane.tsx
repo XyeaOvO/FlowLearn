@@ -4,6 +4,8 @@ import { useEffect, useCallback } from 'react'
 import type { Word, Settings } from '../../../shared/types'
 import { toDateInputValue, formatDate } from '../../lib/date'
 import { useTranslation } from 'react-i18next'
+import { VolumeIcon, EditIcon, RobotIcon, TargetIcon } from '../../shared/components/Icon'
+import { NoSelectionState } from '../../shared/components/EmptyState'
 
 export default function DetailPane({
   word,
@@ -42,11 +44,7 @@ export default function DetailPane({
   if (!word) return (
     <div className="detail-pane">
       <div className="detail-empty">
-        <div className="empty-state">
-          <div className="empty-state-icon">👈</div>
-          <div className="empty-state-title">{t('detail.selectTitle')}</div>
-          <div className="empty-state-description">{t('detail.selectDesc')}</div>
-        </div>
+        <NoSelectionState />
       </div>
     </div>
   )
@@ -58,10 +56,7 @@ export default function DetailPane({
           <div className="detail-title">
             {word.term}
             <button className="tts-button-detail" onClick={() => speak(word.term)} aria-label="发音">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
-              </svg>
+              <VolumeIcon size={20} />
             </button>
             <span className={`badge ${word.reviewStatus === 'new' ? 'badge-info' : word.reviewStatus === 'learning' ? 'badge-warning' : 'badge-success'}`} style={{ marginLeft: 12, verticalAlign: 'middle' }}>
               {word.reviewStatus === 'new' ? t('status.new') : word.reviewStatus === 'learning' ? t('status.learning') : t('status.mastered')}
@@ -191,7 +186,7 @@ export default function DetailPane({
         )}
         <div className="toolbar">
           {!editing && (
-            <button className="btn" onClick={() => { setEditing(true); setDraft(word) }}>编辑</button>
+            <button className="btn" onClick={() => { setEditing(true); setDraft(word) }}><EditIcon size={16} /> 编辑</button>
           )}
           {editing && (
             <>
