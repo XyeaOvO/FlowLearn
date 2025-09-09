@@ -2,6 +2,11 @@
 
 <div align="center">
 
+[![GitHub stars](https://img.shields.io/github/stars/XyeaOvO/FlowLearn?style=for-the-badge)](https://github.com/XyeaOvO/FlowLearn/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/XyeaOvO/FlowLearn?style=for-the-badge)](https://github.com/XyeaOvO/FlowLearn/network)
+[![GitHub issues](https://img.shields.io/github/issues/XyeaOvO/FlowLearn?style=for-the-badge)](https://github.com/XyeaOvO/FlowLearn/issues)
+[![GitHub license](https://img.shields.io/github/license/XyeaOvO/FlowLearn?style=for-the-badge)](https://github.com/XyeaOvO/FlowLearn/blob/main/LICENSE)
+
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
 [![Electron](https://img.shields.io/badge/Electron-191970?style=for-the-badge&logo=Electron&logoColor=white)](https://www.electronjs.org/)
@@ -31,6 +36,10 @@ FlowLearn 是一款革命性的桌面应用，专为高效的跨语言学习而�
 **FlowLearn = 智能捕获 + AI深度解析 + 科学复习**
 
 通过后台静默监听、批量AI处理和间隔重复算法，实现从生词收集到知识内化的全流程自动化。
+
+### 📸 应用截图
+
+> 🚧 **开发中**: 应用界面截图将在正式版本发布时添加
 
 ---
 
@@ -131,8 +140,8 @@ FlowLearn 是一款革命性的桌面应用，专为高效的跨语言学习而�
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/your-username/flowlearn.git
-cd flowlearn
+git clone https://github.com/XyeaOvO/FlowLearn.git
+cd FlowLearn
 
 # 2. 安装依赖
 npm install
@@ -207,6 +216,34 @@ npm run electron:pack
 
 ---
 
+## 🗂 数据存储与备份
+
+- 数据均保存在本地用户数据目录（userData）中：
+  - settings.json：应用设置
+  - vocab.db：词汇数据库（SQLite）
+  - backups/：自动备份目录
+- 常见平台的 userData 位置示例：
+  - Windows: C:/Users/你的用户名/AppData/Roaming/FlowLearn
+  - macOS: ~/Library/Application Support/FlowLearn
+  - Linux: ~/.config/FlowLearn
+- 你也可以在应用内使用导入/导出功能进行手动备份和迁移。
+
+## ⌨️ 默认快捷键
+
+- 强制添加当前剪贴板内容：
+  - Windows/Linux：Ctrl + Shift + Y
+  - macOS：Command + Shift + Y
+- 可在 设置 → 基础/快捷键 中自定义。
+
+## 🤖 AI 输出格式说明
+
+- 为了提升解析稳定性，应用在 Prompt 中要求 AI 在输出末尾追加一个被以下标记包裹的严格 JSON：
+  - BEGIN_FLOWLEARN_JSON ... END_FLOWLEARN_JSON
+- JSON 数组的每一项应包含字段：term, definition, phonetic, example, domain。
+- 应用将自动提取并校验该 JSON，并保留完整的富文本解析作为知识卡片详情。
+
+---
+
 ### 🔧 开发指南
 
 ### 📋 开发环境要求
@@ -231,8 +268,8 @@ npm run electron:pack
 
 ```bash
 # 1. 克隆项目
-git clone <repository-url>
-cd flowlearn
+git clone https://github.com/XyeaOvO/FlowLearn.git
+cd FlowLearn
 
 # 2. 安装依赖
 npm install
@@ -276,7 +313,7 @@ npm run electron:dev
 ```
 flowlearn/
 ├── 📁 electron/                 # Electron 主进程
-│   ├── 📄 main.ts              # 主进程入口（2389行核心逻辑）
+│   ├── 📄 main.ts              # 主进程入口
 │   ├── 📄 preload.ts           # 预加载脚本
 │   └── 📄 electron-env.d.ts    # Electron 类型定义
 ├── 📁 src/                     # React 渲染进程
@@ -317,7 +354,7 @@ flowlearn/
 │   └── 📄 icon.png             # 应用图标
 ├── 📄 package.json             # 项目配置
 ├── 📄 vite.config.ts           # Vite 配置
-├── 📄 electron-builder.config.ts # 打包配置
+├── 📄 electron-builder.config.ts # 打包配置（或 electron-builder.json5）
 ├── 📄 tsconfig.json            # TypeScript 配置
 └── 📄 create-release.bat       # 发布脚本
 ```
@@ -505,6 +542,10 @@ export default {
 
 # 或手动发布到 GitHub Releases
 gh release create v0.1.0 release/0.1.0/FlowLearn-Windows-0.1.0-Setup.exe
+
+# 发布到 GitHub Pages (文档)
+npm run docs:build
+npm run docs:deploy
 ```
 
 ---
@@ -538,7 +579,7 @@ perf: 性能优化
 
 ### 🐛 问题报告
 
-发现 bug？请通过 [GitHub Issues](https://github.com/your-username/flowlearn/issues) 报告，并提供：
+发现 bug？请通过 [GitHub Issues](https://github.com/XyeaOvO/FlowLearn/issues) 报告，并提供：
 
 - 详细的问题描述和预期行为
 - 完整的复现步骤
@@ -558,7 +599,14 @@ perf: 性能优化
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+本项目采用 MIT 许可证 - 查看 [LICENSE](https://github.com/XyeaOvO/FlowLearn/blob/main/LICENSE) 文件了解详情。
+
+### 📈 项目统计
+
+![GitHub repo size](https://img.shields.io/github/repo-size/XyeaOvO/FlowLearn)
+![GitHub code size](https://img.shields.io/github/languages/code-size/XyeaOvO/FlowLearn)
+![GitHub last commit](https://img.shields.io/github/last-commit/XyeaOvO/FlowLearn)
+![GitHub release](https://img.shields.io/github/v/release/XyeaOvO/FlowLearn?include_prereleases)
 
 ---
 
@@ -589,19 +637,28 @@ perf: 性能优化
 - 开源社区的无私贡献
 - 语言学习领域的研究者们
 
+### 🤝 贡献者
+
+<a href="https://github.com/XyeaOvO/FlowLearn/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=XyeaOvO/FlowLearn" />
+</a>
+
+*感谢所有为 FlowLearn 做出贡献的开发者！*
+
 ---
 
 <div align="center">
 
 **🌟 如果这个项目对你有帮助，请给我们一个 Star！**
 
-[⭐ Star on GitHub](https://github.com/your-username/flowlearn) • [🐛 Report Bug](https://github.com/your-username/flowlearn/issues) • [💡 Request Feature](https://github.com/your-username/flowlearn/issues)
+[⭐ Star on GitHub](https://github.com/XyeaOvO/FlowLearn) • [🐛 Report Bug](https://github.com/XyeaOvO/FlowLearn/issues) • [💡 Request Feature](https://github.com/XyeaOvO/FlowLearn/issues)
 
 <br>
 
-![Version](https://img.shields.io/badge/FlowLearn-v0.1.0-blue?style=for-the-badge)
+![Version](https://img.shields.io/github/package-json/v/XyeaOvO/FlowLearn?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge)
+![Downloads](https://img.shields.io/github/downloads/XyeaOvO/FlowLearn/total?style=for-the-badge)
 
 **Made with ❤️ by FlowLearn Team**
 
