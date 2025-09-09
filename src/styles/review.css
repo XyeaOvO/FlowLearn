@@ -302,12 +302,77 @@
 }
 
 .review-card {
-  background: var(--panel);
+  width: 100%;
+  max-width: 500px;
+  height: 300px;
+  margin: 0 auto;
+  perspective: 1200px;
+  cursor: pointer;
+  position: relative;
+}
+
+.card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform-style: preserve-3d;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.review-card.flipped .card-inner {
+  transform: rotateY(180deg) scale(1.02);
+}
+
+.review-card:hover .card-inner {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+}
+
+.review-card.flipped:hover .card-inner {
+  transform: rotateY(180deg) translateY(-5px) scale(1.02);
+}
+
+.card-front, .card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  background: linear-gradient(135deg, var(--panel) 0%, rgba(255, 255, 255, 0.05) 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 32px;
-  text-align: center;
-  box-shadow: var(--shadow-sm);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.card-front::before, .card-back::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.review-card:hover .card-front::before,
+.review-card:hover .card-back::before {
+  opacity: 1;
+}
+
+.card-back {
+  transform: rotateY(180deg);
+  background: linear-gradient(135deg, var(--panel) 0%, rgba(79, 70, 229, 0.05) 100%);
+  border-color: rgba(79, 70, 229, 0.2);
 }
 
 .review-term {
@@ -322,6 +387,21 @@
   line-height: 1.6;
   color: var(--text);
   text-align: left;
+}
+
+.card-content {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text);
+  word-wrap: break-word;
+  position: relative;
+  z-index: 2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+}
+
+.review-card:hover .card-content {
+  transform: scale(1.05);
 }
 
 .review-actions {

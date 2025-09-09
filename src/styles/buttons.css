@@ -14,21 +14,57 @@
   line-height: var(--line-height-normal);
   text-decoration: none;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
   user-select: none;
   outline: none;
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+/* Button ripple effect */
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.3s ease, height 0.3s ease;
+  pointer-events: none;
+}
+
+.btn:active::before {
+  width: 300px;
+  height: 300px;
 }
 
 .btn:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   pointer-events: none;
+  transform: none !important;
+}
+
+.btn:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn:not(:disabled):active {
+  transform: translateY(0);
+  transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Button Sizes */
@@ -55,13 +91,15 @@
 .btn-primary:hover {
   background: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3);
 }
 
 .btn-primary:active {
-  transform: translateY(0);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4);
+}
+
+.btn-primary::before {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Secondary Button - Medium Visual Priority */
@@ -74,7 +112,11 @@
 .btn-secondary:hover {
   background: var(--bg-tertiary);
   border-color: var(--border-secondary);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+.btn-secondary::before {
+  background: rgba(0, 0, 0, 0.05);
 }
 
 /* Ghost Button - Low Visual Priority */
@@ -87,6 +129,11 @@
 .btn-ghost:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.btn-ghost::before {
+  background: rgba(0, 0, 0, 0.03);
 }
 
 /* Danger Button - Warning Priority */
@@ -98,6 +145,19 @@
 
 .btn-danger:hover {
   background: var(--color-error-hover);
+  border-color: var(--color-error-hover);
+  box-shadow: 0 8px 25px rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:active {
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+}
+
+.btn-danger::before {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-danger:hover {
   border-color: var(--color-error-hover);
 }
 

@@ -6,13 +6,33 @@
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  transition: all var(--transition-fast);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+  transform: translateZ(0);
+  position: relative;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
 }
 
 .card:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
   border-color: var(--border-secondary);
+  transform: translateY(-4px) scale(1.02);
+}
+
+.card:hover::before {
+  opacity: 1;
 }
 
 /* Card Variants */
@@ -21,8 +41,12 @@
 }
 
 .card-elevated:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  transform: translateY(-6px) scale(1.03);
+}
+
+.card-elevated::before {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, transparent 60%);
 }
 
 .card-flat {
@@ -30,10 +54,21 @@
   border: 1px solid var(--border-primary);
 }
 
+.card-flat:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+}
+
 .card-outlined {
   background: transparent;
   border: 2px solid var(--border-primary);
   box-shadow: none;
+}
+
+.card-outlined:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+  transform: translateY(-2px);
 }
 
 /* Card Sections */
