@@ -30,6 +30,7 @@ import { ThemeProvider } from './shared/contexts/ThemeContext'
 import { ThemeToggleButton } from './shared/components/ThemeToggle'
 import { ToastProvider } from './shared/components/Toast'
 import { ConfirmProvider } from './shared/components/ConfirmDialog'
+import { BookIcon, TargetIcon, SettingsIcon, CheckIcon, ClockIcon, FileTextIcon } from './shared/components/Icon'
 
 function App() {
   const { t, i18n } = useTranslation()
@@ -229,7 +230,7 @@ function App() {
               onClick={() => setTab('list')}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>📚</span>
+                <BookIcon size={16} />
                   <span>{t('nav.vocab')}</span>
               </span>
               <span className="nav-item-count">{words.filter(w => !(w as Word & { deletedAt?: number }).deletedAt).length}</span>
@@ -240,7 +241,7 @@ function App() {
               disabled={dueWords.length === 0}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>🎯</span>
+                <TargetIcon size={16} />
                   <span>{t('nav.review')}</span>
               </span>
               {dueWords.length > 0 && <span className="nav-item-count">{dueWords.length}</span>}
@@ -250,7 +251,7 @@ function App() {
               onClick={() => setTab('settings')}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>⚙️</span>
+                <SettingsIcon size={16} />
                   <span>{t('nav.settings')}</span>
               </span>
             </button>
@@ -262,7 +263,7 @@ function App() {
             <div className="sidebar-section-title">{t('sidebar.stats')}</div>
             <div className="stats-container">
               <div className="stat-item">
-                <div className="stat-icon new">📝</div>
+                <div className="stat-icon new"><FileTextIcon size={16} /></div>
                 <div className="stat-content">
                   <div className="stat-label">{t('status.new')}</div>
                   <div className="stat-value new">
@@ -271,7 +272,7 @@ function App() {
                 </div>
               </div>
               <div className="stat-item">
-                <div className="stat-icon learning">📚</div>
+                <div className="stat-icon learning"><BookIcon size={20} /></div>
                 <div className="stat-content">
                   <div className="stat-label">{t('status.learning')}</div>
                   <div className="stat-value learning">
@@ -280,7 +281,7 @@ function App() {
                 </div>
               </div>
               <div className="stat-item">
-                <div className="stat-icon mastered">✅</div>
+                <div className="stat-icon mastered"><CheckIcon size={20} /></div>
                 <div className="stat-content">
                   <div className="stat-label">{t('status.mastered')}</div>
                   <div className="stat-value mastered">
@@ -308,12 +309,12 @@ function App() {
               <div className="progress-widget">
                 <div className="progress-stats">
                   <div className="progress-item">
-                    <span className="progress-icon">⏰</span>
+                    <span className="progress-icon"><ClockIcon size={14} /></span>
                     <span className="progress-label">{t('progress.dueCount')}</span>
                     <span className="progress-value due">{dueWords.length}</span>
                   </div>
                   <div className="progress-item">
-                    <span className="progress-icon">🎯</span>
+                    <span className="progress-icon"><TargetIcon size={14} /></span>
                     <span className="progress-label">{t('progress.reviewedToday')}</span>
                     <span className="progress-value completed">{reviewedToday}</span>
                     {settings.dailyGoal && settings.dailyGoal > 0 && (

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { addToBasket } from '@lib/ipc'
 import type { BasketAddResult } from '../../../shared/types'
+import { PlusIcon, RefreshIcon } from '../../shared/components/Icon'
 
 interface AddWordModalProps {
   isOpen: boolean
@@ -51,7 +52,7 @@ export default function AddWordModal({ isOpen, onClose, onSuccess }: AddWordModa
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="modal-title">
-            <span className="modal-icon">➕</span>
+            <span className="modal-icon"><PlusIcon size={20} /></span>
             {t('modal.addWord.title')}
           </h3>
           <button className="modal-close" onClick={onClose}>✕</button>
@@ -79,7 +80,7 @@ export default function AddWordModal({ isOpen, onClose, onSuccess }: AddWordModa
               <span>{t('modal.addWord.tips.support')}</span>
             </div>
             <div className="tip-item">
-              <span className="tip-icon">🔄</span>
+              <span className="tip-icon"><RefreshIcon size={16} /></span>
               <span>{t('modal.addWord.tips.deduplicate')}</span>
             </div>
           </div>

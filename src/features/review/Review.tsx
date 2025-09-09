@@ -4,7 +4,7 @@ import { reviewApply, reviewDue, getSettings as ipcGetSettings, ReviewGrade } fr
 import { useTranslation } from 'react-i18next'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { ArrowLeftIcon, VolumeIcon, ChevronDownIcon, SearchIcon, XIcon, WarningIcon, InfoIcon, CheckIcon } from '../../shared/components/Icon'
+import { ArrowLeftIcon, VolumeIcon, ChevronDownIcon, SearchIcon, XIcon, WarningIcon, InfoIcon, CheckIcon, BookIcon, FileTextIcon } from '../../shared/components/Icon'
 
 export default function Review({ onBack, refresh }: { onBack: () => void; refresh: () => void }) {
   const { t } = useTranslation()
@@ -129,7 +129,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
         <p className="celebration-subtitle">{t('review.noneDue')}</p>
         <div className="celebration-stats">
           <div className="stat-badge">
-            <span className="stat-icon">📚</span>
+            <span className="stat-icon"><BookIcon size={20} /></span>
             <span className="stat-text">今日任务完成</span>
           </div>
         </div>
@@ -338,7 +338,7 @@ export default function Review({ onBack, refresh }: { onBack: () => void; refres
                     <div className="analysis-content" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(word.analysis) as string) }} />
                   ) : (
                     <div className="no-analysis">
-                      <div className="no-analysis-icon">📝</div>
+                      <div className="no-analysis-icon"><FileTextIcon size={24} /></div>
                       <h3 className="no-analysis-title">暂无讲解</h3>
                       <p className="no-analysis-text">这个单词还没有生成详细的讲解内容</p>
                     </div>

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { exportDB, importDB, backupList, backupNow, backupOpenDir, backupRestore, resetAll } from '../../lib/ipc'
 import AIModelConfigComponent from './AIModelConfig'
 import { safeAsync } from '../../shared/lib/errorHandler'
+import { SettingsIcon, SearchIcon, RobotIcon, VolumeIcon, DatabaseIcon } from '../../shared/components/Icon'
 
 export default function SettingsView({ settings, onSave }: { settings: Settings; onSave: (s: Partial<Settings>) => void }) {
   const [local, setLocal] = useState(settings)
@@ -84,16 +85,16 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
   return (
     <div className="settings-layout">
       <nav className="settings-nav">
-        <button className={`settings-nav-item ${active === 'basic' ? 'active' : ''}`} onClick={() => scrollTo(basicRef, 'basic')}>⚙️ {t('settings.section.basic')}</button>
-        <button className={`settings-nav-item ${active === 'filters' ? 'active' : ''}`} onClick={() => scrollTo(filtersRef, 'filters')}>🔍 {t('settings.section.filters')}</button>
-        <button className={`settings-nav-item ${active === 'ai' ? 'active' : ''}`} onClick={() => scrollTo(aiRef, 'ai')}>🤖 {t('settings.section.ai')}</button>
-        <button className={`settings-nav-item ${active === 'tts' ? 'active' : ''}`} onClick={() => scrollTo(ttsRef, 'tts')}>🔊 {t('settings.section.tts')}</button>
-        <button className={`settings-nav-item ${active === 'data' ? 'active' : ''}`} onClick={() => scrollTo(dataRef, 'data')}>💾 {t('data.section')}</button>
+        <button className={`settings-nav-item ${active === 'basic' ? 'active' : ''}`} onClick={() => scrollTo(basicRef, 'basic')}><SettingsIcon size={16} /> {t('settings.section.basic')}</button>
+            <button className={`settings-nav-item ${active === 'filters' ? 'active' : ''}`} onClick={() => scrollTo(filtersRef, 'filters')}><SearchIcon size={16} /> {t('settings.section.filters')}</button>
+            <button className={`settings-nav-item ${active === 'ai' ? 'active' : ''}`} onClick={() => scrollTo(aiRef, 'ai')}><RobotIcon size={16} /> {t('settings.section.ai')}</button>
+            <button className={`settings-nav-item ${active === 'tts' ? 'active' : ''}`} onClick={() => scrollTo(ttsRef, 'tts')}><VolumeIcon size={16} /> {t('settings.section.tts')}</button>
+            <button className={`settings-nav-item ${active === 'data' ? 'active' : ''}`} onClick={() => scrollTo(dataRef, 'data')}><DatabaseIcon size={16} /> {t('data.section')}</button>
       </nav>
       <div className="settings-content">
         <div className="settings-container">
       <div ref={basicRef} className="settings-section">
-        <div className="settings-section-title">⚙️ {t('settings.section.basic')}</div>
+        <div className="settings-section-title"><SettingsIcon size={20} /> {t('settings.section.basic')}</div>
         
         <div className="form-group">
           <label className="form-label">每日复习目标</label>
@@ -312,7 +313,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
       </div>
       
       <div ref={filtersRef} className="settings-section">
-        <div className="settings-section-title">🔍 {t('settings.section.filters')}</div>
+        <div className="settings-section-title"><SearchIcon size={20} /> {t('settings.section.filters')}</div>
         
         <div className="form-group">
           <label className="form-label">{t('settings.regexRules')}</label>
@@ -328,7 +329,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
       </div>
       
       <div ref={aiRef} className="settings-section">
-        <div className="settings-section-title">🤖 {t('settings.section.ai')}</div>
+        <div className="settings-section-title"><RobotIcon size={20} /> {t('settings.section.ai')}</div>
         
         <div className="form-group">
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
@@ -461,7 +462,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
       </div>
 
       <div ref={ttsRef} className="settings-section">
-        <div className="settings-section-title">🔊 {t('settings.section.tts')}</div>
+        <div className="settings-section-title"><VolumeIcon size={20} /> {t('settings.section.tts')}</div>
         <div className="form-group">
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
             <input 
@@ -620,7 +621,7 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
       </div>
       
       <div ref={dataRef} className="settings-section">
-        <div className="settings-section-title">💾 {t('data.section')}</div>
+        <div className="settings-section-title"><DatabaseIcon size={20} /> {t('data.section')}</div>
         <div className="form-group">
           <label className="form-label">{t('settings.importExportLabel')}</label>
           <div className="form-row" style={{ gap: 8 }}>

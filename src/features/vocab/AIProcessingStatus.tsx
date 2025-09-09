@@ -1,5 +1,6 @@
 import { useAIProcessingStatus } from '../../shared/lib/useAIProcessingStatus'
 import { useStreamContent } from '../../shared/lib/useStreamContent'
+import { RefreshIcon, SendIcon, RobotIcon, ClockIcon, CheckIcon } from '../../shared/components/Icon'
 
 interface AIProcessingStatusProps {
   onStatusChange?: (isProcessing: boolean) => void
@@ -176,11 +177,11 @@ export default function AIProcessingStatus({ onStatusChange }: AIProcessingStatu
                 </div>
               ) : (
                 <div>
-                  <div>🔄 正在连接AI服务...</div>
-                  <div>📤 发送词汇数据...</div>
-                  <div>⏳ 等待AI响应...</div>
+                  <div><RefreshIcon size={16} /> 正在连接AI服务...</div>
+                <div><SendIcon size={16} /> 发送词汇数据...</div>
+                  <div><ClockIcon size={16} /> 等待AI响应...</div>
                   <div style={{ color: '#007bff' }}>
-                    {elapsed > 10 ? '🤖 AI正在处理中，请稍候...' : '⏱️ 处理中...'}
+                    {elapsed > 10 ? <><RobotIcon size={16} /> AI正在处理中，请稍候...</> : <><ClockIcon size={16} /> 处理中...</>}
                   </div>
                 </div>
               )}
@@ -206,7 +207,7 @@ export default function AIProcessingStatus({ onStatusChange }: AIProcessingStatu
               )}
             </div>
           ) : (
-            <div style={{ color: '#28a745' }}>✅ 处理完成</div>
+            <div style={{ color: '#28a745' }}><CheckIcon size={16} /> 处理完成</div>
           )}
         </div>
       </div>

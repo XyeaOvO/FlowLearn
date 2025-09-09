@@ -95,8 +95,9 @@
 }
 
 .form-error::before {
-  content: "⚠️";
+  content: "⚠";
   font-size: 12px;
+  color: var(--color-error);
 }
 
 .form-tips {
@@ -181,8 +182,9 @@ label[style*="display: flex"]:hover {
 }
 
 .form-group[style*="border-top"] .form-label::before {
-  content: "⚠️";
+  content: "⚠";
   font-size: 16px;
+  color: var(--color-warning);
 }
 
 /* Button Groups in Settings */
