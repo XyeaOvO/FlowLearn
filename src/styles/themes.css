@@ -59,13 +59,46 @@
   --radius-lg: 0.5rem;
   --radius-xl: 0.75rem;
   
-  /* 间距 */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
-  --spacing-2xl: 3rem;
+  /* 字体层次 */
+  --font-size-xs: 0.75rem;    /* 12px - 辅助文字 */
+  --font-size-sm: 0.875rem;   /* 14px - 正文 */
+  --font-size-base: 1rem;     /* 16px - 基础文字 */
+  --font-size-lg: 1.125rem;   /* 18px - 小标题 */
+  --font-size-xl: 1.25rem;    /* 20px - 标题 */
+  --font-size-2xl: 1.5rem;    /* 24px - 大标题 */
+  --font-size-3xl: 1.875rem;  /* 30px - 主标题 */
+  
+  /* 行高层次 */
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  
+  /* 字重层次 */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  /* 间距系统 - 8px基准 */
+  --spacing-0: 0;
+  --spacing-1: 0.25rem;  /* 4px */
+  --spacing-2: 0.5rem;   /* 8px */
+  --spacing-3: 0.75rem;  /* 12px */
+  --spacing-4: 1rem;     /* 16px */
+  --spacing-5: 1.25rem;  /* 20px */
+  --spacing-6: 1.5rem;   /* 24px */
+  --spacing-8: 2rem;     /* 32px */
+  --spacing-10: 2.5rem;  /* 40px */
+  --spacing-12: 3rem;    /* 48px */
+  --spacing-16: 4rem;    /* 64px */
+  
+  /* 兼容旧变量 */
+  --spacing-xs: var(--spacing-1);
+  --spacing-sm: var(--spacing-2);
+  --spacing-md: var(--spacing-4);
+  --spacing-lg: var(--spacing-6);
+  --spacing-xl: var(--spacing-8);
+  --spacing-2xl: var(--spacing-12);
   
   /* 过渡动画 */
   --transition-fast: 150ms ease-in-out;
