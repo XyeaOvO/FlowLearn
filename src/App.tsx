@@ -6,6 +6,7 @@ import './styles/detail.css'
 import './styles/forms.css'
 import './styles/review.css'
 import './styles/settings.css'
+import './styles/cupertino.css'
 import './styles/themes.css'
 import './styles/empty-state.css'
 import './styles/toast.css'
@@ -92,7 +93,8 @@ function App() {
     const onShowAIProcessingWindow = () => {
       setShowAIProcessingWindow(true)
     }
-    const onShowWordConfirmationModal = (_event: unknown, words: string[]) => {
+    const onShowWordConfirmationModal = (...args: unknown[]) => {
+      const words = (args[1] as string[]) || []
       setPendingWords(words)
       setShowWordConfirmationModal(true)
     }

@@ -3,6 +3,8 @@ import type { Settings, AIModelConfig, BackupListResult, BackupNowResult, Export
 import { useTranslation } from 'react-i18next'
 import { exportDB, importDB, backupList, backupNow, backupOpenDir, backupRestore, resetAll, dbRebuild, dbClearAll } from '../../lib/ipc'
 import AIModelConfigComponent from './AIModelConfig'
+import SegmentedControl from '@/shared/components/SegmentedControl'
+import CupertinoSwitch from '@/shared/components/CupertinoSwitch'
 import { safeAsync } from '../../shared/lib/errorHandler'
 import { SettingsIcon, SearchIcon, RobotIcon, VolumeIcon, DatabaseIcon } from '../../shared/components/Icon'
 
@@ -311,11 +313,16 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
           <div className="form-row">
           <div className="form-group">
             <label className="form-label">{t('settings.theme')}</label>
-            <select className="select" value={local.theme || 'system'} onChange={e => setLocal({ ...local, theme: e.target.value as Settings['theme'] })}>
-              <option value="system">{t('settings.themeSystem')}</option>
-              <option value="light">{t('settings.themeLight')}</option>
-              <option value="dark">{t('settings.themeDark')}</option>
-            </select>
+            <SegmentedControl<'system' | 'light' | 'dark'>
+              value={(local.theme || 'system') as 'system' | 'light' | 'dark'}
+              onChange={(val) => setLocal({ ...local, theme: val as Settings['theme'] })}
+              options={[
+                { value: 'system', label: t('settings.themeSystem') as string },
+                { value: 'light', label: t('settings.themeLight') as string },
+                { value: 'dark', label: t('settings.themeDark') as string },
+              ]}
+              size="sm"
+            />
           </div>
           <div className="form-group">
             <label className="form-label">{t('settings.locale')}</label>
@@ -357,11 +364,11 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
         <div className="settings-section-title"><RobotIcon size={20} /> {t('settings.section.ai')}</div>
         
         <div className="form-group">
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-            <input 
-              type="checkbox" 
-              checked={!!local.aiEnabled} 
-              onChange={e => setLocal({ ...local, aiEnabled: e.target.checked })} 
+          <label style={{ display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer' }}>
+            <CupertinoSwitch
+              checked={!!local.aiEnabled}
+              onChange={(next) => setLocal({ ...local, aiEnabled: next })}
+              label={t('settings.section.ai') as string}
             />
             <span className="form-label" style={{ marginBottom: 0 }}>启用AI自动处理</span>
           </label>
@@ -489,22 +496,22 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
       <div ref={ttsRef} className="settings-section">
         <div className="settings-section-title"><VolumeIcon size={20} /> {t('settings.section.tts')}</div>
         <div className="form-group">
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-            <input 
-              type="checkbox" 
-              checked={!!local.ttsEnabled} 
-              onChange={e => setLocal({ ...local, ttsEnabled: e.target.checked })} 
+          <label style={{ display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer' }}>
+            <CupertinoSwitch
+              checked={!!local.ttsEnabled}
+              onChange={(next) => setLocal({ ...local, ttsEnabled: next })}
+              label={t('settings.section.tts') as string}
             />
             <span className="form-label" style={{ marginBottom: 0 }}>{t('settings.ttsEnable')}</span>
           </label>
           <div className="form-help">开启后可在单词旁手动播放，也可配置自动播放</div>
         </div>
         <div className="form-group">
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-            <input 
-              type="checkbox" 
-              checked={!!local.ttsAutoOnSelect} 
-              onChange={e => setLocal({ ...local, ttsAutoOnSelect: e.target.checked })} 
+          <label style={{ display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer' }}>
+            <CupertinoSwitch
+              checked={!!local.ttsAutoOnSelect}
+              onChange={(next) => setLocal({ ...local, ttsAutoOnSelect: next })}
+              label={t('settings.ttsAutoPlay') as string}
             />
             <span className="form-label" style={{ marginBottom: 0 }}>{t('settings.ttsAutoPlay')}</span>
           </label>

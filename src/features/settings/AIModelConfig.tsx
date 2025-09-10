@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { AIModelConfig, AIModelTestResult } from '../../../shared/types'
 import { testAIModel } from '../../lib/ipc'
 import { getErrorMessage } from '../../shared/lib/errorHandler'
+import CupertinoSwitch from '@/shared/components/CupertinoSwitch'
 
 interface AIModelConfigProps {
   model: AIModelConfig
@@ -69,31 +70,24 @@ export default function AIModelConfigComponent({
   }
 
   return (
-    <div className="ai-model-config" style={{ 
-      border: '1px solid var(--border)', 
-      borderRadius: 8, 
-      padding: 16, 
-      marginBottom: 16,
-      backgroundColor: isDefault ? 'var(--accent-bg)' : 'var(--bg)'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+    <div className={`ai-card ai-model-config ${isDefault ? 'default' : ''}`}>
+      <div className="ai-card-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="checkbox"
+          <CupertinoSwitch
             checked={localModel.enabled}
-            onChange={(e) => {
-              const updated = { ...localModel, enabled: e.target.checked }
+            onChange={(next) => {
+              const updated = { ...localModel, enabled: next }
               setLocalModel(updated)
               onUpdate(updated)
             }}
+            label={localModel.name}
           />
           <input
-            className="input"
+            className="input ai-card-name"
             value={localModel.name}
             onChange={(e) => setLocalModel({ ...localModel, name: e.target.value })}
             onBlur={() => onUpdate(localModel)}
             placeholder="模型名称"
-            style={{ width: 150 }}
           />
           {isDefault && <span style={{ color: 'var(--accent)', fontSize: 12 }}>默认</span>}
         </div>
