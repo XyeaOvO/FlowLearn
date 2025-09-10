@@ -83,44 +83,42 @@ function App() {
     refresh()
     refreshSettings()
     refreshBasket()
-    const handler = () => {
+
+    // Stable handlers for proper add/remove
+    const onDbOrBasketUpdated = () => {
       refresh()
       refreshBasket()
     }
-    
+    const onShowAIProcessingWindow = () => {
+      setShowAIProcessingWindow(true)
+    }
+    const onShowWordConfirmationModal = (_event: unknown, words: string[]) => {
+      setPendingWords(words)
+      setShowWordConfirmationModal(true)
+    }
+    const onSwitchToSettings = () => setTab('settings')
+    const onSwitchToReview = () => setTab('review')
 
     if (typeof window !== 'undefined' && window.api && window.api.on) {
-      window.api.on('db-updated', handler)
-      window.api.on('basket-updated', handler)
-      
-  
-      window.api.on('show-ai-processing-window', () => {
-        setShowAIProcessingWindow(true)
-      })
-      
-      window.api.on('show-word-confirmation-modal', (...args: unknown[]) => {
-        const words = args[1] as string[]
-        setPendingWords(words)
-        setShowWordConfirmationModal(true)
-      })
-      
-  
-      window.api.on('switch-to-settings', () => setTab('settings'))
-      window.api.on('switch-to-review', () => setTab('review'))
-      
+      window.api.on('db-updated', onDbOrBasketUpdated)
+      window.api.on('basket-updated', onDbOrBasketUpdated)
+      window.api.on('show-ai-processing-window', onShowAIProcessingWindow)
+      window.api.on('show-word-confirmation-modal', onShowWordConfirmationModal)
+      window.api.on('switch-to-settings', onSwitchToSettings)
+      window.api.on('switch-to-review', onSwitchToReview)
+
       return () => {
         if (window.api && window.api.off) {
-          window.api.off('db-updated', handler)
-          window.api.off('basket-updated', handler)
-          window.api.off('show-ai-processing-window', handler)
-          window.api.off('show-word-confirmation-modal', handler)
-          window.api.off('switch-to-settings', handler)
-          window.api.off('switch-to-review', handler)
+          window.api.off('db-updated', onDbOrBasketUpdated)
+          window.api.off('basket-updated', onDbOrBasketUpdated)
+          window.api.off('show-ai-processing-window', onShowAIProcessingWindow)
+          window.api.off('show-word-confirmation-modal', onShowWordConfirmationModal)
+          window.api.off('switch-to-settings', onSwitchToSettings)
+          window.api.off('switch-to-review', onSwitchToReview)
         }
       }
     }
-    
-    
+
     return () => {}
   }, [refresh, refreshSettings, refreshBasket])
   

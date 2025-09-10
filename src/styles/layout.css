@@ -268,7 +268,7 @@ html[data-theme="dark"] .stat-icon.mastered {
 .topbar {
   height: 64px;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;

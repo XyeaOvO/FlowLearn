@@ -85,11 +85,36 @@ export default function SettingsView({ settings, onSave }: { settings: Settings;
   return (
     <div className="settings-layout">
       <nav className="settings-nav">
-        <button className={`settings-nav-item ${active === 'basic' ? 'active' : ''}`} onClick={() => scrollTo(basicRef, 'basic')}><SettingsIcon size={16} /> {t('settings.section.basic')}</button>
-            <button className={`settings-nav-item ${active === 'filters' ? 'active' : ''}`} onClick={() => scrollTo(filtersRef, 'filters')}><SearchIcon size={16} /> {t('settings.section.filters')}</button>
-            <button className={`settings-nav-item ${active === 'ai' ? 'active' : ''}`} onClick={() => scrollTo(aiRef, 'ai')}><RobotIcon size={16} /> {t('settings.section.ai')}</button>
-            <button className={`settings-nav-item ${active === 'tts' ? 'active' : ''}`} onClick={() => scrollTo(ttsRef, 'tts')}><VolumeIcon size={16} /> {t('settings.section.tts')}</button>
-            <button className={`settings-nav-item ${active === 'data' ? 'active' : ''}`} onClick={() => scrollTo(dataRef, 'data')}><DatabaseIcon size={16} /> {t('data.section')}</button>
+        <button className={`settings-nav-item ${active === 'basic' ? 'active' : ''}`} onClick={() => scrollTo(basicRef, 'basic')}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SettingsIcon size={16} />
+            <span>{t('settings.section.basic')}</span>
+          </span>
+        </button>
+        <button className={`settings-nav-item ${active === 'filters' ? 'active' : ''}`} onClick={() => scrollTo(filtersRef, 'filters')}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SearchIcon size={16} />
+            <span>{t('settings.section.filters')}</span>
+          </span>
+        </button>
+        <button className={`settings-nav-item ${active === 'ai' ? 'active' : ''}`} onClick={() => scrollTo(aiRef, 'ai')}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <RobotIcon size={16} />
+            <span>{t('settings.section.ai')}</span>
+          </span>
+        </button>
+        <button className={`settings-nav-item ${active === 'tts' ? 'active' : ''}`} onClick={() => scrollTo(ttsRef, 'tts')}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <VolumeIcon size={16} />
+            <span>{t('settings.section.tts')}</span>
+          </span>
+        </button>
+        <button className={`settings-nav-item ${active === 'data' ? 'active' : ''}`} onClick={() => scrollTo(dataRef, 'data')}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <DatabaseIcon size={16} />
+            <span>{t('data.section')}</span>
+          </span>
+        </button>
       </nav>
       <div className="settings-content">
         <div className="settings-container">
