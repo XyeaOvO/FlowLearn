@@ -3,30 +3,11 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 import { DatabaseManager, getDatabaseManager, closeDatabaseManager } from '../src/lib/database'
+import type { Word, Settings as SharedSettings, AIModelConfig } from '../shared/types'
 
 type CollectedItem = {
   term: string
   addedAt: number
-}
-
-type StoredWord = {
-  id: string
-  term: string
-  definition: string
-  phonetic: string
-  example: string
-  domain?: string
-  addedAt: number
-  reviewStatus: 'new' | 'learning' | 'mastered'
-  reviewDueDate: number | null
-  analysis?: string
-  // FSRS fields (optional)
-  fsrsDifficulty?: number // 1 (easy) ~ 10 (hard)
-  fsrsStability?: number // in days
-  fsrsLastReviewedAt?: number // ts
-  fsrsReps?: number
-  fsrsLapses?: number
-  deletedAt?: number
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -70,71 +51,8 @@ const backupDir = path.join(app.getPath('userData'), 'backups')
 // Database manager instance
 let dbManager: DatabaseManager | null = null
 
-type AIModelConfig = {
-  id: string
-  name: string
-  type: 'openai' | 'anthropic' | 'deepseek' | 'google' | 'custom'
-  apiUrl: string
-  apiKey: string
-  modelName: string
-  enabled: boolean
-  isDefault: boolean
-  createdAt: number
-  lastTested?: number
-  testResult?: boolean
-}
-
-type Settings = {
-  triggerThreshold: number
-  promptTemplate: string
-  minWords: number
-  maxWords: number
-  ignoreMultiline: boolean
-  regexExcludes: string[]
-  hotkey: string
-  // 新增多种快捷键配置
-  hotkeys: {
-    addFromClipboard: string
-    showHideWindow: string
-    processBasket: string
-    clearBasket: string
-    togglePause: string
-    openSettings: string
-    startReview: string
-    quickAdd: string
-  }
-  onboarded?: boolean
-  responseMode: 'rich-summary' | 'json-only'
-  richHeader: string
-  // TTS
-  ttsEnabled?: boolean
-  ttsAutoOnSelect?: boolean
-  ttsVoice?: string
-  ttsLang?: string
-  ttsRate?: number
-  ttsPitch?: number
-  // Cloud TTS provider (Volcengine OpenSpeech)
-  ttsProvider?: 'local' | 'volcengine'
-  volcAppid?: string
-  volcToken?: string
-  volcCluster?: string
-  volcVoiceType?: string
-  volcEncoding?: 'wav' | 'pcm' | 'ogg_opus' | 'mp3'
-  volcSpeedRatio?: number
-  volcRate?: number
-  // UI
-  theme?: 'system' | 'light' | 'dark'
-  locale?: 'zh' | 'en'
-  // Close behavior
-  closeAction?: 'ask' | 'minimize' | 'exit'
-  // Daily goal & reminders
-  dailyGoal?: number
-  reviewReminderTimes?: string[]
-  // AI Integration
-  aiEnabled?: boolean
+type Settings = SharedSettings & {
   aiAutoProcess?: boolean
-  aiModels?: AIModelConfig[]
-  defaultModelId?: string
 }
 
 function readJsonFile<T>(filePath: string, fallback: T): T {
@@ -300,16 +218,16 @@ function initializeDatabase() {
 }
 
 // 兼容性函数：读取数据库
-function readDB(): StoredWord[] {
+function readDB(): Word[] {
   if (dbManager) {
     return dbManager.getAllWords()
   }
   // 回退到JSON文件
-  return readJsonFile<StoredWord[]>(dbFile, [])
+  return readJsonFile<Word[]>(dbFile, [])
 }
 
 // 兼容性函数：写入数据库（已弃用，使用具体的数据库操作）
-function writeDB(data: StoredWord[]) {
+function writeDB(data: Word[]) {
   console.warn('writeDB function is deprecated, please use specific database operation methods')
   // 为了兼容性，暂时保留
   writeJsonFile(dbFile, data)
@@ -669,7 +587,7 @@ function handleClipboardText(text: string) {
         const arr = JSON.parse(json)
         if (Array.isArray(arr) && arr.every(isValidWordObject)) {
           const cleaned = stripFlowLearnJson(text)
-          saveWordsWithAnalysis(arr as Omit<StoredWord, 'id' | 'addedAt' | 'reviewStatus' | 'reviewDueDate' | 'analysis'>[], cleaned)
+          saveWordsWithAnalysis(arr as Omit<Word, 'id' | 'addedAt' | 'reviewStatus' | 'reviewDueDate' | 'analysis'>[], cleaned)
           isWaitingForAIResult = false
           updateTrayMenu()
           new Notification({ title: '保存成功', body: `${arr.length} 个学习结果已成功保存！` }).show()
@@ -779,7 +697,7 @@ function importAIResultFromText(text: string): number {
     const arr = JSON.parse(json)
     if (Array.isArray(arr) && arr.every(isValidWordObject)) {
       const cleaned = stripFlowLearnJson(text)
-      saveWordsWithAnalysis(arr as Omit<StoredWord, 'id' | 'addedAt' | 'reviewStatus' | 'reviewDueDate' | 'analysis'>[], cleaned)
+      saveWordsWithAnalysis(arr as Omit<Word, 'id' | 'addedAt' | 'reviewStatus' | 'reviewDueDate' | 'analysis'>[], cleaned)
       isWaitingForAIResult = false
       updateTrayMenu()
       new Notification({ title: '保存成功', body: `${arr.length} 个学习结果已成功保存！` }).show()
@@ -1091,7 +1009,7 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
-function ensureFsrsDefaults(w: StoredWord): StoredWord {
+function ensureFsrsDefaults(w: Word): Word {
   if (w.fsrsDifficulty === undefined) w.fsrsDifficulty = 5
   if (w.fsrsStability === undefined) w.fsrsStability = 0.5
   if (w.fsrsLastReviewedAt === undefined) w.fsrsLastReviewedAt = w.addedAt || Date.now()
@@ -1230,14 +1148,14 @@ function applyReviewResult(id: string, grade: ReviewGrade) {
 }
 
 // 更新数据库操作函数以使用SQLite
-function listWords(): StoredWord[] {
+function listWords(): Word[] {
   if (dbManager) {
     return dbManager.getAllWords()
   }
   return readDB()
 }
 
-function listDeletedWords(): StoredWord[] {
+function listDeletedWords(): Word[] {
   if (dbManager) {
     return dbManager.getDeletedWords()
   }
@@ -1267,7 +1185,7 @@ function deleteWord(id: string): { ok: boolean; error?: string } {
   }
 }
 
-function updateWord(word: StoredWord): { ok: boolean; error?: string } {
+function updateWord(word: Word): { ok: boolean; error?: string } {
   try {
     if (dbManager) {
       const success = dbManager.updateWord(word)
@@ -1313,7 +1231,7 @@ function restoreWord(id: string): { ok: boolean; error?: string } {
   }
 }
 
-function bulkUpdate(ids: string[], changes: Partial<StoredWord>): number {
+function bulkUpdate(ids: string[], changes: Partial<Word>): number {
   try {
     if (dbManager) {
       const changed = dbManager.bulkUpdateWords(ids, changes)
@@ -1414,9 +1332,9 @@ ipcMain.handle('basket:trigger', () => triggerPrompt())
 ipcMain.handle('db:list', () => listWords())
 ipcMain.handle('db:deleted:list', () => listDeletedWords())
 ipcMain.handle('db:delete', (_e, id: string) => deleteWord(id))
-ipcMain.handle('db:update', (_e, w: StoredWord) => updateWord(w))
+ipcMain.handle('db:update', (_e, w: Word) => updateWord(w))
 ipcMain.handle('db:restore', (_e, id: string) => restoreWord(id))
-ipcMain.handle('db:bulkUpdate', (_e, ids: string[], changes: Partial<StoredWord>) => ({ ok: true, changed: bulkUpdate(ids, changes) }))
+ipcMain.handle('db:bulkUpdate', (_e, ids: string[], changes: Partial<Word>) => ({ ok: true, changed: bulkUpdate(ids, changes) }))
 ipcMain.handle('db:bulkDelete', (_e, ids: string[]) => ({ ok: true, changed: bulkDelete(ids) }))
 ipcMain.handle('db:bulkRestore', (_e, ids: string[]) => ({ ok: true, changed: bulkRestore(ids) }))
 ipcMain.handle('review:due', () => {
@@ -1424,7 +1342,7 @@ ipcMain.handle('review:due', () => {
   
   if (dbManager) {
     // 使用SQLite数据库
-    const due = dbManager.getDueWords(now)
+    const due = dbManager.getDueWords()
     // Sort by estimated retrievability ascending (lower first)
     const withR = due.map(w => {
       const ww = ensureFsrsDefaults(w)
@@ -1821,7 +1739,7 @@ function rebuildDatabase() {
     console.log('Starting database rebuild...')
     
     // 备份当前数据（如果可能的话）
-    let backupData: StoredWord[] = []
+    let backupData: Word[] = []
     try {
       if (dbManager) {
         backupData = dbManager.getAllWords()

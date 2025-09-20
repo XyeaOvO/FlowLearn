@@ -1,5 +1,4 @@
 import { useRef, useCallback, useState, useEffect, useMemo } from 'react'
-import type { Word } from '../../../shared/types'
 
 /**
  * 内存优化Hook，用于管理大量词汇数据
@@ -7,8 +6,13 @@ import type { Word } from '../../../shared/types'
  * @returns 包含内存优化相关函数的对象
  */
 export function useMemoryOptimization() {
+  type MemoCacheEntry = {
+    deps: unknown[]
+    value: unknown
+  }
+
   // 使用Map缓存计算结果，提高重复计算的性能
-  const memoCache = useRef(new Map())
+  const memoCache = useRef(new Map<string, MemoCacheEntry>())
   
   /**
    * 清理缓存的函数
@@ -32,22 +36,35 @@ export function useMemoryOptimization() {
     computeFn: () => R,
     dependencies: T[]
   ): R => {
-    const depsKey = JSON.stringify(dependencies)
-    const cacheKey = `${key}:${depsKey}`
-    
-    if (memoCache.current.has(cacheKey)) {
-      return memoCache.current.get(cacheKey)
+    const entry = memoCache.current.get(key)
+    const areDepsEqual = (prev: unknown[] | undefined, next: unknown[]): boolean => {
+      if (!prev || prev.length !== next.length) {
+        return false
+      }
+
+      for (let i = 0; i < prev.length; i += 1) {
+        if (!Object.is(prev[i], next[i])) {
+          return false
+        }
+      }
+
+      return true
     }
-    
+
+    if (entry && areDepsEqual(entry.deps, dependencies)) {
+      return entry.value as R
+    }
+
     const result = computeFn()
-    
-    // 限制缓存大小，防止内存泄漏
-    if (memoCache.current.size > 100) {
+
+    if (!entry && memoCache.current.size >= 100) {
       const firstKey = memoCache.current.keys().next().value
-      memoCache.current.delete(firstKey)
+      if (typeof firstKey !== 'undefined') {
+        memoCache.current.delete(firstKey)
+      }
     }
-    
-    memoCache.current.set(cacheKey, result)
+
+    memoCache.current.set(key, { deps: Array.isArray(dependencies) ? [...dependencies] : [], value: result })
     return result
   }, [])
 
@@ -92,52 +109,12 @@ export function useMemoryOptimization() {
   }, [])
 
   /**
-   * 优化的词汇数据处理
-   * 创建多种索引以提高查找性能
-   * @param words 词汇数据数组
-   * @returns 包含各种索引的优化数据结构
-   */
-  const optimizeWordData = useCallback((words: Word[]) => {
-    return memoizedCompute('optimizeWordData', () => {
-      // 创建索引以提高查找性能
-      const termIndex = new Map<string, Word>()
-      const domainIndex = new Map<string, Word[]>()
-      const statusIndex = new Map<string, Word[]>()
-      
-      words.forEach(word => {
-        // 词汇索引
-        termIndex.set(word.term.toLowerCase(), word)
-        
-        // 域名索引
-        const domain = word.domain || 'unknown'
-        if (!domainIndex.has(domain)) {
-          domainIndex.set(domain, [])
-        }
-        domainIndex.get(domain)!.push(word)
-        
-        // 状态索引
-        if (!statusIndex.has(word.reviewStatus)) {
-          statusIndex.set(word.reviewStatus, [])
-        }
-        statusIndex.get(word.reviewStatus)!.push(word)
-      })
-      
-      return {
-        termIndex,
-        domainIndex,
-        statusIndex,
-        totalCount: words.length
-      }
-    }, [words.length, words.map(w => w.id).join(',')])
-  }, [memoizedCompute])
-
-  /**
    * 内存使用监控（开发模式）
    * 仅在开发环境下提供内存使用情况
    * @returns 内存使用统计信息或null
    */
   const getMemoryUsage = useCallback(() => {
-    if (process.env.NODE_ENV === 'development' && 'memory' in performance) {
+    if (import.meta.env.DEV && 'memory' in performance) {
       const memory = (performance as unknown as { memory: {
         usedJSHeapSize: number;
         totalJSHeapSize: number;
@@ -156,7 +133,6 @@ export function useMemoryOptimization() {
   return {
     memoizedCompute,
     processBatch,
-    optimizeWordData,
     clearCache,
     getMemoryUsage
   }
@@ -199,7 +175,16 @@ export function useThrottledState<T>(initialValue: T, delay: number = 300) {
     }
     setState(newValue)
   }, [])
-  
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+    }
+  }, [])
+
   return [state, setThrottledState, setImmediateState] as const
 }
 

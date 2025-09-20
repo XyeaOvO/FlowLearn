@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { Settings } from '@shared/types'
+import type { Settings } from '@common/types'
 
 export const useTTS = (settings: Settings | null) => {
   const speak = useCallback((text: string) => {

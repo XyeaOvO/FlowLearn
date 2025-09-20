@@ -1,26 +1,68 @@
-import type { Word, Settings, AIModelConfig, AIProcessingStatus, BasketAddResult, AIModelTestResult, BackupListResult, ImportDBResult, BackupNowResult, BackupRestoreResult, ResetAllResult, DeleteWordResult } from '../../shared/types'
-import { IPC } from '@shared/ipcChannels'
+import type { Word, Settings, AIModelConfig, AIProcessingStatus, BasketAddResult, AIModelTestResult, BackupListResult, ImportDBResult, BackupNowResult, BackupRestoreResult, ResetAllResult, DeleteWordResult } from '@common/types'
+import { IPC } from '@common/ipcChannels'
 
-// 在开发环境中存储设置的临时变量
-let mockSettings: any = {
-  aiEnabled: false,
+type MutableWord = Word & { deletedAt?: number }
+
+const isMacPlatform = (() => {
+  if (typeof navigator !== 'undefined') {
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
+    const platform = nav.userAgentData?.platform ?? nav.platform ?? nav.userAgent
+    return /mac|iphone|ipad|ipod/i.test(platform)
+  }
+  return false
+})()
+
+const modifierKey = isMacPlatform ? 'CommandOrControl' : 'Control'
+
+const defaultHotkeys = {
+  addFromClipboard: `${modifierKey}+Shift+Y`,
+  showHideWindow: `${modifierKey}+Shift+H`,
+  processBasket: `${modifierKey}+Shift+P`,
+  clearBasket: `${modifierKey}+Shift+C`,
+  togglePause: `${modifierKey}+Shift+S`,
+  openSettings: `${modifierKey}+Shift+O`,
+  startReview: `${modifierKey}+Shift+R`,
+  quickAdd: `${modifierKey}+Shift+A`
+}
+
+const defaultSettings: Settings = {
   triggerThreshold: 5,
   promptTemplate: '',
-  filterMinWords: 1,
-  filterMaxWords: 10,
-  filterIgnoreNewlines: false,
-  filterRegex: '',
-  globalShortcut: '',
+  minWords: 1,
+  maxWords: 10,
+  ignoreMultiline: false,
+  regexExcludes: [],
+  hotkey: defaultHotkeys.addFromClipboard,
+  hotkeys: defaultHotkeys,
+  responseMode: 'rich-summary',
+  richHeader: '',
   ttsEnabled: false,
-  ttsProvider: 'system',
-  ttsVolcAppId: '',
-  ttsVolcAccessKey: '',
-  ttsVolcSecretKey: '',
-  aiModels: [],
-  dailyGoal: 20,
+  ttsProvider: 'local',
   theme: 'system',
   locale: 'zh',
-  closeAction: 'ask'
+  closeAction: 'ask',
+  dailyGoal: 20,
+  reviewReminderTimes: [],
+  aiEnabled: false,
+  aiModels: [],
+  defaultModelId: undefined,
+}
+
+let mockSettings: Settings = { ...defaultSettings }
+const mockWords: MutableWord[] = []
+let mockBasket: Array<{ term: string }> = []
+
+const cloneWord = (word: MutableWord): Word => ({ ...word })
+
+const getActiveWords = () => mockWords.filter(word => !(word as MutableWord & { deletedAt?: number }).deletedAt)
+const getDeletedWords = () => mockWords.filter(word => !!(word as MutableWord & { deletedAt?: number }).deletedAt)
+
+const markWordsAsDeleted = (ids: string[]) => {
+  const timestamp = Date.now()
+  ids.forEach(id => {
+    const target = mockWords.find(word => word.id === id)
+    if (target) target.deletedAt = timestamp
+  })
 }
 
 export async function ipcInvoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T> {
@@ -29,28 +71,119 @@ export async function ipcInvoke<T = unknown>(channel: string, ...args: unknown[]
     return window.api.invoke(channel, ...args) as Promise<T>
   }
   
-  // 在开发环境中返回模拟数据
-  
-  // 为不同的channel返回适当的模拟数据
-  if (channel === IPC.DbList || channel === IPC.DbDeletedList) {
-    return Promise.resolve([] as T) // 返回空数组而不是空对象
+  switch (channel) {
+    case IPC.DbList:
+      return getActiveWords().map(cloneWord) as T
+    case IPC.DbDeletedList:
+      return getDeletedWords().map(cloneWord) as T
+    case IPC.DbDelete: {
+      const [id] = args as [string]
+      const target = mockWords.find(word => word.id === id)
+      if (!target) {
+        return { ok: false, error: 'Word not found' } as T
+      }
+      target.deletedAt = Date.now()
+      return { ok: true } as T
+    }
+    case IPC.DbRestore: {
+      const [id] = args as [string]
+      const target = mockWords.find(word => word.id === id)
+      if (!target) {
+        return { ok: false, error: 'Word not found' } as T
+      }
+      delete target.deletedAt
+      return { ok: true } as T
+    }
+    case IPC.DbUpdate: {
+      const [word] = args as [Word]
+      const index = mockWords.findIndex(item => item.id === word.id)
+      if (index >= 0) {
+        mockWords[index] = { ...mockWords[index], ...word }
+      } else {
+        mockWords.push({ ...word })
+      }
+      return { ok: true } as T
+    }
+    case IPC.DbBulkUpdate: {
+      const [ids, changes] = args as [string[], Partial<Word>]
+      ids.forEach(id => {
+        const target = mockWords.find(word => word.id === id)
+        if (target) {
+          Object.assign(target, changes)
+        }
+      })
+      return undefined as T
+    }
+    case IPC.DbBulkDelete: {
+      const [ids] = args as [string[]]
+      markWordsAsDeleted(ids)
+      return undefined as T
+    }
+    case IPC.DbBulkRestore: {
+      const [ids] = args as [string[]]
+      ids.forEach(id => {
+        const target = mockWords.find(word => word.id === id)
+        if (target) delete target.deletedAt
+      })
+      return undefined as T
+    }
+    case IPC.BasketList:
+      return mockBasket.slice() as T
+    case IPC.BasketAdd: {
+      const [term] = args as [string]
+      mockBasket.push({ term })
+      return { ok: true, count: mockBasket.length } as T
+    }
+    case IPC.BasketTrigger:
+      mockBasket = []
+      return { ok: true } as T
+    case IPC.SettingsGet:
+      return { ...mockSettings } as T
+    case IPC.SettingsSet: {
+      const [newSettings] = args as [Partial<Settings>]
+      mockSettings = {
+        ...mockSettings,
+        ...newSettings,
+        hotkeys: newSettings?.hotkeys ? { ...mockSettings.hotkeys, ...newSettings.hotkeys } : mockSettings.hotkeys,
+      }
+      return { success: true } as T
+    }
+    case IPC.ImportFromClipboard:
+      return 0 as T
+    case IPC.ImportFromText:
+      return 0 as T
+    case IPC.TestAIModel:
+      return { success: true, message: 'Mock connection successful' } as T
+    case IPC.ProcessWordsWithAI:
+    case IPC.StartAIProcessing:
+    case IPC.CancelAIProcessing:
+    case IPC.CreateAIProcessingWindow:
+    case IPC.ShowWordConfirmation:
+      return { ok: true } as T
+    case IPC.GetAIProcessingStatus:
+      return {
+        isProcessing: false,
+        currentWords: [],
+        currentModelId: '',
+        startTime: 0,
+        streamOutput: [],
+        currentStep: '',
+        streamContent: '',
+      } as T
+    case IPC.TtsVolcQuery:
+      return null as T
+    case IPC.DbExport:
+    case IPC.DbImport:
+    case IPC.DbBackupNow:
+    case IPC.DbBackupList:
+    case IPC.DbBackupRestore:
+    case IPC.DbBackupOpenDir:
+    case IPC.DbResetAll:
+    case IPC.DbRebuild:
+      return { ok: true } as T
+    default:
+      return {} as T
   }
-  if (channel === IPC.BasketList) {
-    return Promise.resolve([] as T) // 篮子也返回空数组
-  }
-  if (channel === IPC.SettingsGet) {
-    // 返回模拟设置
-    return Promise.resolve(mockSettings as T)
-  }
-  if (channel === IPC.SettingsSet) {
-    // 在开发环境中更新模拟设置
-    const newSettings = args[0] as Partial<typeof mockSettings>
-    mockSettings = { ...mockSettings, ...newSettings }
-    console.log('Mock settings updated:', mockSettings)
-    return Promise.resolve({ success: true } as T)
-  }
-  
-  return Promise.resolve({} as T)
 }
 
 // Settings

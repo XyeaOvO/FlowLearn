@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { Word } from '@shared/types'
+import { useMemo, useState } from 'react'
+import type { Word } from '@common/types'
 import { useThrottledState } from '../lib/useMemoryOptimization'
 
 export interface FilterState {
@@ -40,7 +40,7 @@ export const useFilters = () => {
   const [regexPattern, setRegexPattern] = useState('')
   const [showDeleted, setShowDeleted] = useState(false)
 
-  const filterState: FilterState = {
+  const filterState: FilterState = useMemo(() => ({
     query: search,
     status: statusFilter,
     from: filterDateFrom,
@@ -51,9 +51,20 @@ export const useFilters = () => {
     useRegex,
     regex: regexPattern,
     showDeleted,
-  }
+  }), [
+    search,
+    statusFilter,
+    filterDateFrom,
+    filterDateTo,
+    domainFilter,
+    requireExample,
+    requirePhonetic,
+    useRegex,
+    regexPattern,
+    showDeleted,
+  ])
 
-  const filterActions: FilterActions = {
+  const filterActions: FilterActions = useMemo(() => ({
     setSearch,
     setStatus: setStatusFilter,
     setFrom: setFilterDateFrom,
@@ -64,7 +75,18 @@ export const useFilters = () => {
     setUseRegex,
     setRegex: setRegexPattern,
     setShowDeleted,
-  }
+  }), [
+    setSearch,
+    setStatusFilter,
+    setFilterDateFrom,
+    setFilterDateTo,
+    setDomainFilter,
+    setRequireExample,
+    setRequirePhonetic,
+    setUseRegex,
+    setRegexPattern,
+    setShowDeleted,
+  ])
 
   return { filterState, filterActions }
 }

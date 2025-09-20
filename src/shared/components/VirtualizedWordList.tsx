@@ -50,7 +50,7 @@ export default function VirtualizedWordList({
   selectedIds = [],
   onToggleSelection,
   renderItem,
-  showStats = process.env.NODE_ENV === 'development'
+  showStats = import.meta.env.DEV
 }: VirtualizedWordListProps) {
   // 使用增强的虚拟滚动Hook获取可见项和滚动相关属性
   const {

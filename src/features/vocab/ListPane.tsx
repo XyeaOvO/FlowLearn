@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import type { Word } from '../../../shared/types'
+import type { Word } from '@common/types'
 import { type VocabFilter } from './filters'
 import { useTranslation } from 'react-i18next'
-import { useOptimizedFilter } from '../../shared/lib/useOptimizedFilter'
-import VirtualizedWordList from '../../shared/components/VirtualizedWordList'
-import { SearchIcon, SettingsIcon, TrashIcon, RefreshIcon} from '../../shared/components/Icon'
-import { NoDataState, NoResultsState } from '../../shared/components/EmptyState'
-import { useToastActions } from '../../shared/components/Toast'
-import { useConfirmActions } from '../../shared/components/ConfirmDialog'
+import { useOptimizedFilter } from '@shared/lib/useOptimizedFilter'
+import VirtualizedWordList from '@shared/components/VirtualizedWordList'
+import { SearchIcon, SettingsIcon, TrashIcon, RefreshIcon } from '@shared/components/Icon'
+import { NoDataState, NoResultsState } from '@shared/components/EmptyState'
+import { useToastActions } from '@shared/components/Toast'
+import { useConfirmActions } from '@shared/components/ConfirmDialog'
 
 export default function ListPane({
   words,

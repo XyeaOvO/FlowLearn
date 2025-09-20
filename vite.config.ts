@@ -13,7 +13,8 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
       '@features': path.resolve(__dirname, 'src/features'),
       '@lib': path.resolve(__dirname, 'src/lib'),
-      '@shared': path.resolve(__dirname, 'shared'),
+      '@shared': path.resolve(__dirname, 'src/shared'),
+      '@common': path.resolve(__dirname, 'shared'),
     },
   },
   plugins: [

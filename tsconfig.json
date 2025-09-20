@@ -10,7 +10,8 @@
       "@/*": ["src/*"],
       "@features/*": ["src/features/*"],
       "@lib/*": ["src/lib/*"],
-      "@shared/*": ["shared/*"]
+      "@shared/*": ["src/shared/*"],
+      "@common/*": ["shared/*"]
     },
 
     /* Bundler mode */

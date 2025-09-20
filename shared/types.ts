@@ -249,6 +249,8 @@ export type Settings = {
   regexExcludes: string[]
   /** 全局快捷键（兼容性保留） */
   hotkey: string
+  /** 是否完成引导 */
+  onboarded?: boolean
   
   // 多种快捷键配置
   hotkeys: {
@@ -332,5 +334,4 @@ export type Settings = {
   /** 默认AI模型ID */
   defaultModelId?: string
 }
-
 

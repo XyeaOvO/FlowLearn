@@ -36,44 +36,36 @@ export class DatabaseManager {
   private queryStats: Map<string, { count: number; totalTime: number; avgTime: number; slowQueries: number }> = new Map()
   private readonly SLOW_QUERY_THRESHOLD = 100 // 100ms
   private readonly ENABLE_QUERY_MONITORING = process.env.NODE_ENV === 'development'
-  
-  // 连接池配置
-  private static readonly CONNECTION_POOL_CONFIG = {
-    maxConnections: 5,
-    idleTimeout: 30000, // 30秒
-    busyTimeout: 5000,  // 5秒
-    checkInterval: 10000 // 10秒检查一次
-  }
-  
-  // 连接池状态
+
+  // 简化的连接池（仅用于兼容，默认不维护额外连接）
   private connectionPool: {
     connections: Database.Database[]
     activeConnections: Set<Database.Database>
     lastUsed: Map<Database.Database, number>
-    cleanupTimer?: NodeJS.Timeout
+    cleanupTimer: NodeJS.Timeout | null
   } = {
     connections: [],
     activeConnections: new Set(),
-    lastUsed: new Map()
+    lastUsed: new Map(),
+    cleanupTimer: null,
   }
-  
-  // 数据库健康状态
+
+  // 健康状态（仅记录最新一次检查结果）
   private healthStatus = {
     isHealthy: true,
     lastCheck: Date.now(),
     errorCount: 0,
-    lastError: null as Error | null
+    lastError: null as Error | null,
   }
 
   constructor(dbPath: string) {
     this.dbPath = dbPath
     this.db = this.initializeDatabase()
-    
-    // 定期清理过期缓存
-    setInterval(() => this.cleanExpiredCache(), 60 * 1000) // 每分钟清理一次
-    
     this.initConnectionPool()
     this.startHealthMonitoring()
+  
+    // 定期清理过期缓存
+    setInterval(() => this.cleanExpiredCache(), 60 * 1000) // 每分钟清理一次
   }
 
   /**
@@ -1467,178 +1459,78 @@ export class DatabaseManager {
   }
 
   /**
-   * 初始化连接池
+   * 初始化连接池（简化为单连接）
    */
   private initConnectionPool(): void {
-    // 启动连接池清理定时器
-    this.connectionPool.cleanupTimer = setInterval(() => {
-      this.cleanupIdleConnections()
-    }, DatabaseManager.CONNECTION_POOL_CONFIG.checkInterval)
-  }
-  
-  /**
-   * 清理空闲连接
-   */
-  private cleanupIdleConnections(): void {
-    const now = Date.now()
-    const idleTimeout = DatabaseManager.CONNECTION_POOL_CONFIG.idleTimeout
-    
-    this.connectionPool.connections = this.connectionPool.connections.filter(conn => {
-      const lastUsed = this.connectionPool.lastUsed.get(conn) || 0
-      const isIdle = now - lastUsed > idleTimeout
-      const isActive = this.connectionPool.activeConnections.has(conn)
-      
-      if (isIdle && !isActive && conn !== this.db) {
-        try {
-          conn.close()
-          this.connectionPool.lastUsed.delete(conn)
-          return false
-        } catch (error) {
-          console.warn('关闭空闲连接失败:', error)
-          return true
-        }
-      }
-      
-      return true
-    })
+    this.connectionPool.connections = [this.db]
+    this.connectionPool.activeConnections = new Set([this.db])
+    this.connectionPool.lastUsed = new Map([[this.db, Date.now()]])
   }
   
 
   /**
-   * 启动健康监控
+   * 启动健康监控（简化为单次检查）
    */
   private startHealthMonitoring(): void {
-    setInterval(() => {
-      this.checkDatabaseHealth()
-    }, 60000) // 每分钟检查一次
+    this.checkDatabaseHealth().catch(error => {
+      this.healthStatus.isHealthy = false
+      this.healthStatus.lastError = error as Error
+      this.healthStatus.lastCheck = Date.now()
+    })
   }
   
   /**
    * 检查数据库健康状态
    */
   private async checkDatabaseHealth(): Promise<void> {
-    try {
-      const startTime = Date.now()
-      
-      // 执行简单的健康检查查询
-      const result = this.db.prepare('SELECT 1 as health_check').get()
-      
-      const responseTime = Date.now() - startTime
-      
-      if (result && responseTime < 1000) {
-        this.healthStatus.isHealthy = true
-        this.healthStatus.errorCount = 0
-        this.healthStatus.lastError = null
-      } else {
-        this.healthStatus.isHealthy = false
-        this.healthStatus.errorCount++
-      }
-      
-      this.healthStatus.lastCheck = Date.now()
-      
-    } catch (error) {
+    if (!this.db || !this.db.open) {
       this.healthStatus.isHealthy = false
-      this.healthStatus.errorCount++
-      this.healthStatus.lastError = error as Error
       this.healthStatus.lastCheck = Date.now()
-      
-      console.error('数据库健康检查失败:', error)
-      
-      // 如果连续失败多次，尝试重新初始化
-      if (this.healthStatus.errorCount >= 3) {
-        console.warn('数据库连续健康检查失败，尝试重新初始化...')
-        try {
-          this.reinitializeDatabase()
-        } catch (reinitError) {
-          console.error('数据库重新初始化失败:', reinitError)
-        }
-      }
+      return
     }
-  }
-  
-  /**
-   * 重新初始化数据库
-   */
-  private reinitializeDatabase(): void {
+
     try {
-      // 关闭现有连接
-      if (this.db) {
-        this.db.close()
-      }
-      
-      // 清理连接池
-      this.connectionPool.connections.forEach(conn => {
-        try {
-          conn.close()
-        } catch (error) {
-          console.warn('关闭连接池连接失败:', error)
-        }
-      })
-      
-      this.connectionPool.connections = []
-      this.connectionPool.activeConnections.clear()
-      this.connectionPool.lastUsed.clear()
-      
-      // 重新初始化
-      this.db = this.initializeDatabase()
-      
+      this.db.prepare('SELECT 1 as health_check').get()
+      this.healthStatus.isHealthy = true
       this.healthStatus.errorCount = 0
       this.healthStatus.lastError = null
-      
-      console.log('数据库重新初始化成功')
-      
     } catch (error) {
-      console.error('数据库重新初始化失败:', error)
-      throw error
+      this.healthStatus.isHealthy = false
+      this.healthStatus.errorCount += 1
+      this.healthStatus.lastError = error as Error
     }
+
+    this.healthStatus.lastCheck = Date.now()
   }
   
   /**
    * 获取数据库健康状态
    */
   getHealthStatus() {
-    return {
-      ...this.healthStatus,
-      connectionPool: {
-        totalConnections: this.connectionPool.connections.length,
-        activeConnections: this.connectionPool.activeConnections.size,
-        idleConnections: this.connectionPool.connections.length - this.connectionPool.activeConnections.size
-      }
-    }
+    return { ...this.healthStatus }
   }
   
   /**
    * 关闭数据库连接和连接池
    */
   close(): void {
-    // 清理定时器
     if (this.connectionPool.cleanupTimer) {
       clearInterval(this.connectionPool.cleanupTimer)
+      this.connectionPool.cleanupTimer = null
     }
-    
-    // 关闭所有连接
-    this.connectionPool.connections.forEach(conn => {
-      try {
-        conn.close()
-      } catch (error) {
-        console.warn('关闭连接失败:', error)
-      }
-    })
-    
-    // 关闭主连接
+
+    this.connectionPool.connections = []
+    this.connectionPool.activeConnections.clear()
+    this.connectionPool.lastUsed.clear()
+
     if (this.db) {
       try {
         this.queryCache.clear()
         this.db.close()
       } catch (error) {
-        // 数据库关闭失败，忽略错误
+        console.warn('关闭数据库失败:', error)
       }
     }
-    
-    // 清理连接池状态
-    this.connectionPool.connections = []
-    this.connectionPool.activeConnections.clear()
-    this.connectionPool.lastUsed.clear()
   }
 
   /**
