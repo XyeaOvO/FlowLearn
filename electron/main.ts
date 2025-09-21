@@ -1,8 +1,9 @@
-import { app, BrowserWindow, Tray, Menu, clipboard, Notification, ipcMain, nativeImage, shell, globalShortcut, screen, dialog } from 'electron'
+import { app, BrowserWindow, Menu, clipboard, Notification, ipcMain, nativeImage, shell, globalShortcut, screen, dialog } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
-import { DatabaseManager, getDatabaseManager, closeDatabaseManager } from '../src/lib/database'
+import { DatabaseManager, getDatabaseManager, closeDatabaseManager } from './services/database'
+import { createTrayController, type TrayController, type TrayActions, type TrayState } from './services/tray'
 import type { Word, Settings as SharedSettings, AIModelConfig } from '../shared/types'
 
 type CollectedItem = {
@@ -31,7 +32,7 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
-let tray: Tray | null = null
+let trayController: TrayController | null = null
 
 // In-memory basket and waiting state
 let basket: CollectedItem[] = []
@@ -50,6 +51,7 @@ const backupDir = path.join(app.getPath('userData'), 'backups')
 
 // Database manager instance
 let dbManager: DatabaseManager | null = null
+let settingsCache: Settings | null = null
 
 type Settings = SharedSettings & {
   aiAutoProcess?: boolean
@@ -120,6 +122,9 @@ function migrateSettings(input: Settings): Settings {
 }
 
 function getSettings(): Settings {
+  if (settingsCache) {
+    return settingsCache
+  }
   const def: Settings = {
     triggerThreshold: 5,
     promptTemplate: `请将以下{count}个词语或表达的解释，以一个JSON数组的格式返回给我。不要在JSON代码块前后添加任何描述性文字或寒暄。
@@ -176,13 +181,15 @@ function getSettings(): Settings {
   }
   const raw = readJsonFile(settingsFile, def)
   // Ensure new keys from defaults are present
-  return migrateSettings({ ...def, ...raw })
+  settingsCache = migrateSettings({ ...def, ...raw })
+  return settingsCache
 }
 
 function setSettings(newSettings: Partial<Settings>) {
   const current = getSettings()
   const merged = { ...current, ...newSettings }
   writeJsonFile(settingsFile, merged)
+  settingsCache = merged
   // Re-register all hotkeys when settings change
   registerAllHotkeys(merged.hotkeys)
   try { updateTrayMenu() } catch {
@@ -282,6 +289,93 @@ function getTrayIconImage() {
   return base
 }
 
+function getStartOfTodayTimestamp(): number {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  return start.getTime()
+}
+
+function computeDueCount(): number {
+  const now = Date.now()
+  if (dbManager) {
+    return dbManager.countDueWords(now)
+  }
+  return listWords().filter(w => w.reviewDueDate !== null && (w.reviewDueDate as number) <= now).length
+}
+
+function computeReviewedToday(): number {
+  const since = getStartOfTodayTimestamp()
+  if (dbManager) {
+    return dbManager.countReviewedSince(since)
+  }
+  return readDB().filter(w => !w.deletedAt && (w.fsrsLastReviewedAt || 0) >= since).length
+}
+
+function buildTrayState(): TrayState {
+  const settings = getSettings()
+  return {
+    isWindowVisible: !!win?.isVisible(),
+    isPaused,
+    basketCount: basket.length,
+    isWaitingForAIResult,
+    aiProcessingStatus: {
+      isProcessing: aiProcessingStatus.isProcessing,
+      currentWords: aiProcessingStatus.currentWords || [],
+    },
+    dueCount: computeDueCount(),
+    reviewedToday: computeReviewedToday(),
+    dailyGoal: settings.dailyGoal || 0,
+  }
+}
+
+function importClipboardOutputFromTray() {
+  const txt = clipboard.readText()
+  if (!txt) {
+    new Notification({ title: '剪贴板为空', body: '请先复制 AI 的完整输出文本' }).show()
+    return
+  }
+  importAIResultFromText(txt)
+}
+
+function openSettingsFromTray() {
+  if (!win) {
+    createWindow()
+    return
+  }
+  if (!win.isVisible()) {
+    win.show()
+  }
+  win.focus()
+  shell.beep()
+}
+
+function quitFromTray() {
+  isAppQuitting = true
+  app.quit()
+}
+
+const trayActions: TrayActions = {
+  toggleWindowVisibility: () => toggleWindowVisibility(),
+  togglePause: () => togglePauseWithHotkey(),
+  forceAddFromClipboard: () => forceAddTermFromClipboard(),
+  importClipboardOutput: () => importClipboardOutputFromTray(),
+  processBasket: () => processBasketWithHotkey(),
+  clearBasket: () => clearBasketWithHotkey(),
+  cancelAIProcessing: () => { cancelAIProcessing() },
+  openSettings: () => openSettingsFromTray(),
+  quit: () => quitFromTray(),
+}
+
+function initializeTray() {
+  const icon = getTrayIconImage()
+  trayController = createTrayController({
+    icon,
+    getState: buildTrayState,
+    actions: trayActions,
+  })
+  updateTrayMenu = trayController.update
+}
+
 function showCloseConfirmDialog() {
   if (!win) return
   
@@ -365,114 +459,6 @@ function createWindow() {
   }
 }
 
-function createTray() {
-  const image = getTrayIconImage()
-  tray = new Tray(image)
-  const updateContextMenu = () => {
-    const now = Date.now()
-    const dueCount = listWords().filter(w => w.reviewDueDate !== null && (w.reviewDueDate as number) <= now).length
-    const s = getSettings()
-    const todayStart = new Date()
-    todayStart.setHours(0,0,0,0)
-    const todayReviewed = readDB().filter(w => !w.deletedAt && (w.fsrsLastReviewedAt || 0) >= todayStart.getTime()).length
-    const goal = s.dailyGoal || 0
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: `待复习：${dueCount}   今日进度：${todayReviewed}${goal ? '/' + goal : ''}`,
-        enabled: false,
-      },
-      { type: 'separator' },
-      {
-        label: win?.isVisible() ? '隐藏窗口' : '显示窗口',
-        click: () => {
-          if (!win) return
-          if (win.isVisible()) win.hide()
-          else win.show()
-        },
-      },
-      { type: 'separator' },
-      {
-        label: isPaused ? '继续监听' : '暂停监听',
-        click: () => {
-          isPaused = !isPaused
-          updateContextMenu()
-        },
-      },
-      {
-        label: '强制加入当前剪贴板（绕过过滤）',
-        click: () => forceAddTermFromClipboard(),
-      },
-      {
-        label: '手动导入：解析剪贴板 AI 输出',
-        click: () => {
-          const txt = clipboard.readText()
-          if (!txt) {
-            new Notification({ title: '剪贴板为空', body: '请先复制 AI 的完整输出文本' }).show()
-            return
-          }
-          importAIResultFromText(txt)
-        },
-      },
-      {
-        label: `立即处理篮中 ${basket.length} 个生词`,
-        enabled: basket.length > 0 && !isWaitingForAIResult && !aiProcessingStatus.isProcessing,
-        click: () => {
-          const s = getSettings()
-          if (s.aiEnabled) {
-            triggerPromptWithAI()
-          } else {
-            triggerPrompt()
-          }
-        },
-      },
-      {
-        label: '清空生词篮子',
-        enabled: basket.length > 0 && !isWaitingForAIResult && !aiProcessingStatus.isProcessing,
-        click: () => {
-          basket = []
-          updateContextMenu()
-          win?.webContents.send('basket-updated', basket)
-        },
-      },
-      ...(aiProcessingStatus.isProcessing ? [{
-        label: `AI处理中... (${aiProcessingStatus.currentWords.length}个词汇)`,
-        enabled: false,
-      }, {
-        label: '取消AI处理',
-        click: () => {
-          cancelAIProcessing()
-          updateContextMenu()
-        },
-      }] : []),
-      { type: 'separator' },
-      {
-        label: '设置',
-        click: () => {
-          win?.show()
-          shell.beep()
-        },
-      },
-      {
-        label: '退出应用',
-        click: () => {
-          isAppQuitting = true
-          app.quit()
-        },
-      },
-    ])
-    tray?.setToolTip('FlowLearn - 自动化生词学习助手')
-    tray?.setContextMenu(contextMenu)
-  }
-  tray.setIgnoreDoubleClickEvents(true)
-  tray.on('click', () => {
-    if (!win) return
-    if (win.isVisible()) win.hide()
-    else win.show()
-  })
-  updateContextMenu()
-  return updateContextMenu
-}
-
 function normalizeText(text: string): string {
   return text.trim().toLowerCase()
 }
@@ -528,7 +514,7 @@ function triggerPrompt() {
   }, 5 * 60 * 1000)
 }
 
-let updateTrayMenu: () => void
+let updateTrayMenu: () => void = () => {}
 
 function startClipboardWatcher() {
   let last = clipboard.readText()
@@ -553,7 +539,7 @@ function scheduleReviewReminders() {
       const keyPrefix = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`
       const pad = (n: number) => String(n).padStart(2,'0')
       const nowStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`
-      const dueCount = listWords().filter(w => w.reviewDueDate !== null && (w.reviewDueDate as number) <= Date.now()).length
+      const dueCount = computeDueCount()
       for (const t of times) {
         if (!/^\d{2}:\d{2}$/.test(t)) continue
         const key = `${keyPrefix} ${t}`
@@ -2403,7 +2389,7 @@ app.whenReady().then(() => {
   initializeDatabase()
   
   createWindow()
-  updateTrayMenu = createTray()
+  initializeTray()
   startClipboardWatcher()
   // 注册所有快捷键
   const settings = getSettings()

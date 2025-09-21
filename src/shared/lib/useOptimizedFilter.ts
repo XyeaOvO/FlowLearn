@@ -236,7 +236,7 @@ export function useVirtualScroll<T>(
   } = options
 
   const [scrollTop, setScrollTop] = useState(0)
-  const [stats, setStats] = useState<VirtualScrollStats>({
+  const createInitialStats = () => ({
     totalItems: 0,
     visibleItems: 0,
     renderTime: 0,
@@ -244,7 +244,10 @@ export function useVirtualScroll<T>(
     cacheHits: 0,
     cacheMisses: 0
   })
-  
+  const statsRef = useRef<VirtualScrollStats>(createInitialStats())
+  const statsDirtyRef = useRef(false)
+  const [stats, setStats] = useState<VirtualScrollStats>(statsRef.current)
+
   // 缓存计算结果
   const cacheRef = useRef<Map<string, unknown>>(new Map())
   const heightCacheRef = useRef(new Map<number, number>())
@@ -259,7 +262,8 @@ export function useVirtualScroll<T>(
         
         setScrollTop(clampedScrollTop)
         if (enablePerfMonitoring) {
-          setStats(prev => ({ ...prev, scrollEvents: prev.scrollEvents + 1 }))
+          statsRef.current.scrollEvents += 1
+          statsDirtyRef.current = true
         }
       }, throttleDelay),
     [throttleDelay, enablePerfMonitoring, items.length, itemHeight, containerHeight]
@@ -275,7 +279,8 @@ export function useVirtualScroll<T>(
     
     if (cacheRef.current.has(cacheKey)) {
       if (enablePerfMonitoring) {
-        setStats(prev => ({ ...prev, cacheHits: prev.cacheHits + 1 }))
+        statsRef.current.cacheHits += 1
+        statsDirtyRef.current = true
       }
       return cacheRef.current.get(cacheKey) as {
         startIndex: number
@@ -317,11 +322,9 @@ export function useVirtualScroll<T>(
     
     if (enablePerfMonitoring) {
       const endTime = performance.now()
-      setStats(prev => ({
-        ...prev,
-        cacheMisses: prev.cacheMisses + 1,
-        renderTime: endTime - startTime
-      }))
+      statsRef.current.cacheMisses += 1
+      statsRef.current.renderTime = endTime - startTime
+      statsDirtyRef.current = true
     }
     
     return result
@@ -336,11 +339,13 @@ export function useVirtualScroll<T>(
     const result = items.slice(safeStartIndex, safeEndIndex)
     
     if (enablePerfMonitoring) {
-      setStats(prev => ({
-        ...prev,
-        totalItems: items.length,
-        visibleItems: result.length
-      }))
+      const nextTotal = items.length
+      const nextVisible = result.length
+      if (statsRef.current.totalItems !== nextTotal || statsRef.current.visibleItems !== nextVisible) {
+        statsRef.current.totalItems = nextTotal
+        statsRef.current.visibleItems = nextVisible
+        statsDirtyRef.current = true
+      }
     }
     
     return result
@@ -412,15 +417,21 @@ export function useVirtualScroll<T>(
   const clearCache = useCallback(() => {
     cacheRef.current.clear()
     heightCacheRef.current.clear()
-    setStats({
-      totalItems: 0,
-      visibleItems: 0,
-      renderTime: 0,
-      scrollEvents: 0,
-      cacheHits: 0,
-      cacheMisses: 0
-    })
+    statsRef.current = createInitialStats()
+    statsDirtyRef.current = true
+    setStats({ ...statsRef.current })
   }, [])
+
+  useEffect(() => {
+    if (!enablePerfMonitoring) {
+      return
+    }
+    if (!statsDirtyRef.current) {
+      return
+    }
+    statsDirtyRef.current = false
+    setStats({ ...statsRef.current })
+  }, [enablePerfMonitoring, items.length, scrollTop, visibleItems, visibleRange])
 
   // 清理效果
   useEffect(() => {

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import type { Word } from '@common/types'
-import { useThrottledState } from '../lib/useMemoryOptimization'
+import { useDebounce } from '../lib/useOptimizedFilter'
 
 export interface FilterState {
   query: string
@@ -29,7 +29,8 @@ export interface FilterActions {
 }
 
 export const useFilters = () => {
-  const [search, setSearch] = useThrottledState('', 200)
+  const [searchInput, setSearchInput] = useState('')
+  const debouncedSearch = useDebounce(searchInput, 200)
   const [statusFilter, setStatusFilter] = useState<'all' | Word['reviewStatus']>('all')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
@@ -39,9 +40,10 @@ export const useFilters = () => {
   const [useRegex, setUseRegex] = useState(false)
   const [regexPattern, setRegexPattern] = useState('')
   const [showDeleted, setShowDeleted] = useState(false)
+  const setSearch = useCallback((value: string) => setSearchInput(value), [])
 
   const filterState: FilterState = useMemo(() => ({
-    query: search,
+    query: debouncedSearch,
     status: statusFilter,
     from: filterDateFrom,
     to: filterDateTo,
@@ -52,7 +54,7 @@ export const useFilters = () => {
     regex: regexPattern,
     showDeleted,
   }), [
-    search,
+    debouncedSearch,
     statusFilter,
     filterDateFrom,
     filterDateTo,
@@ -88,5 +90,5 @@ export const useFilters = () => {
     setShowDeleted,
   ])
 
-  return { filterState, filterActions }
+  return { filterState, filterActions, searchInput }
 }

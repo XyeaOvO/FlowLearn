@@ -56,7 +56,8 @@ type TopbarProps = {
 
 export function AppLayout() {
   const {
-    words,
+    activeWords,
+    deletedWords,
     selectedId,
     selectedWord,
     settings,
@@ -91,7 +92,7 @@ export function AppLayout() {
     closeAIProcessingWindow,
     saveSettings,
   } = useAppActions()
-  const { filterState, filterActions } = useFilters()
+  const { filterState, filterActions, searchInput } = useFilters()
   const { multiSelectMode, selectedIds, setMultiSelectMode, setSelectedIds, clearSelection } = useMultiSelect()
   const { width: listWidth, onStartResize } = useResizable(380, 'listPaneWidth')
   const { speak } = useTTS(settings)
@@ -156,7 +157,7 @@ export function AppLayout() {
   }, [importFromClipboard, isImporting])
 
   const filterUi = useMemo(() => ({
-    search: filterState.query,
+    search: searchInput,
     setSearch: filterActions.setSearch,
     status: filterState.status,
     setStatus: filterActions.setStatus,
@@ -179,7 +180,11 @@ export function AppLayout() {
       clearSelection()
       filterActions.setShowDeleted(value)
     },
-  }), [filterState, filterActions, clearSelection])
+  }), [filterState, filterActions, clearSelection, searchInput])
+
+  const words = useMemo(() => (
+    filterState.showDeleted ? deletedWords : activeWords
+  ), [filterState.showDeleted, activeWords, deletedWords])
 
   return (
     <div className="layout">

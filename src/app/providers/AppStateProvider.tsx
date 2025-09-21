@@ -28,7 +28,8 @@ type StatusCounts = {
 }
 
 type AppStateValue = {
-  words: Word[]
+  activeWords: Word[]
+  deletedWords: Word[]
   selectedId: string | null
   selectedWord: Word | null
   settings: Settings | null
@@ -72,7 +73,8 @@ const AppStateContext = createContext<AppStateValue | undefined>(undefined)
 const AppActionsContext = createContext<AppActionsValue | undefined>(undefined)
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [words, setWords] = useState<Word[]>([])
+  const [activeWords, setActiveWords] = useState<Word[]>([])
+  const [deletedWords, setDeletedWords] = useState<Word[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [settings, setSettingsState] = useState<Settings | null>(null)
   const [basketCount, setBasketCount] = useState(0)
@@ -89,9 +91,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       dbList() as Promise<Word[]>,
       dbDeletedList() as Promise<Word[]>,
     ])
-    const activeWords = Array.isArray(active) ? active : []
-    const deletedWords = Array.isArray(deleted) ? deleted : []
-    setWords([...activeWords, ...deletedWords])
+    setActiveWords(Array.isArray(active) ? active : [])
+    setDeletedWords(Array.isArray(deleted) ? deleted : [])
   }, [])
 
   const refreshSettings = useCallback(async () => {
@@ -166,10 +167,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!selectedId) return
-    if (!words.some(word => word.id === selectedId)) {
+    const existsInActive = activeWords.some(word => word.id === selectedId)
+    const existsInDeleted = deletedWords.some(word => word.id === selectedId)
+    if (!existsInActive && !existsInDeleted) {
       setSelectedId(null)
     }
-  }, [words, selectedId])
+  }, [activeWords, deletedWords, selectedId])
 
   const stats = useMemo(() => {
     const domainSet = new Set<string>()
@@ -180,21 +183,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     let dueCount = 0
     let reviewedToday = 0
-    let active = 0
-    let deleted = 0
     let newCount = 0
     let learningCount = 0
     let masteredCount = 0
 
-    for (const word of words) {
-      const isDeleted = !!(word as Word & { deletedAt?: number }).deletedAt
-      if (isDeleted) {
-        deleted += 1
-        continue
-      }
-
-      active += 1
-
+    for (const word of activeWords) {
       if (word.domain && word.domain.trim()) {
         domainSet.add(word.domain.trim())
       }
@@ -227,19 +220,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       dueCount,
       reviewedToday,
       statusCounts: {
-        active,
-        deleted,
+        active: activeWords.length,
+        deleted: deletedWords.length,
         new: newCount,
         learning: learningCount,
         mastered: masteredCount,
       } satisfies StatusCounts,
     }
-  }, [words])
+  }, [activeWords, deletedWords])
 
   const selectedWord = useMemo(() => {
     if (!selectedId) return null
-    return words.find(word => word.id === selectedId) ?? null
-  }, [words, selectedId])
+    return activeWords.find(word => word.id === selectedId)
+      ?? deletedWords.find(word => word.id === selectedId)
+      ?? null
+  }, [activeWords, deletedWords, selectedId])
 
   const selectWord = useCallback((id: string | null) => {
     setSelectedId(id)
@@ -331,7 +326,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [refreshSettings])
 
   const stateValue = useMemo<AppStateValue>(() => ({
-    words,
+    activeWords,
+    deletedWords,
     selectedId,
     selectedWord,
     settings,
@@ -346,7 +342,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     reviewedToday: stats.reviewedToday,
     statusCounts: stats.statusCounts,
   }), [
-    words,
+    activeWords,
+    deletedWords,
     selectedId,
     selectedWord,
     settings,
